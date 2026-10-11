@@ -24,7 +24,7 @@ import android.webkit.WebViewClient;
  */
 public class MainActivity extends Activity {
   static final String TAG = "HomeHQ";
-  static final String DEFAULT_URL = "https://home-dashboard.wesbos.workers.dev/";
+  static final String DEFAULT_URL = "https://frame.sabadorks.com/";
   static final long EXIT_HOLD_MS = 1500;
   static final float EXIT_SLOP_PX = 60;
 
@@ -40,8 +40,12 @@ public class MainActivity extends Activity {
     public void run() {
       exitArmed = false;
       Log.i(TAG, "Two-finger hold: exiting to launcher");
-      Intent home = new Intent(Intent.ACTION_MAIN);
-      home.addCategory(Intent.CATEGORY_HOME);
+      // This app is the default home, so open the other launcher explicitly.
+      Intent home = getPackageManager().getLaunchIntentForPackage("amirz.rootless.nexuslauncher");
+      if (home == null) {
+        home = new Intent(Intent.ACTION_MAIN);
+        home.addCategory(Intent.CATEGORY_HOME);
+      }
       home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
       startActivity(home);
       finish();
@@ -61,11 +65,27 @@ public class MainActivity extends Activity {
     s.setDomStorageEnabled(true);
     s.setUseWideViewPort(true);
     s.setMediaPlaybackRequiresUserGesture(false);
-    web.setWebViewClient(new WebViewClient()); // keep navigation inside the kiosk
+    // Keep navigation inside the kiosk; on a main-frame load error (Wi-Fi not up yet at boot) retry.
+    web.setWebViewClient(new WebViewClient() {
+      @Override
+      public void onReceivedError(WebView view, int code, String desc, String failingUrl) {
+        Log.w(TAG, "Load failed (" + desc + "), retrying in 10s");
+        scheduleRetry(failingUrl);
+      }
+    });
     setContentView(web);
 
     String url = getIntent().getDataString();
     web.loadUrl(url != null ? url : DEFAULT_URL);
+  }
+
+  private void scheduleRetry(final String failingUrl) {
+    handler.postDelayed(new Runnable() {
+      @Override
+      public void run() {
+        web.loadUrl(failingUrl != null ? failingUrl : DEFAULT_URL);
+      }
+    }, 10000);
   }
 
   @Override

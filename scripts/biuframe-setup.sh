@@ -89,10 +89,10 @@ cmd_check() {
   local state
   state="$(adb get-state 2>/dev/null || true)"
   [ "$state" = device ] || die "no authorized ADB device (state: ${state:-none}). Accept the prompt on the frame."
-  [ "$(sh_dev getprop ro.build.fingerprint)" = "$EXPECT_FINGERPRINT" ] || die "build fingerprint differs: $(sh_dev getprop ro.build.fingerprint)"
+  [ "$(sh_dev getprop ro.build.fingerprint)" = "$EXPECT_FINGERPRINT" ] || { [ "${BIUFRAME_ALLOW_MISMATCH:-}" = 1 ] && echo "    WARN: fingerprint differs: $(sh_dev getprop ro.build.fingerprint)" || die "build fingerprint differs: $(sh_dev getprop ro.build.fingerprint)"; }
   ok "fingerprint $EXPECT_FINGERPRINT"
-  [ "$(sh_dev getprop ro.product.model)" = "$EXPECT_MODEL" ] || die "model is not $EXPECT_MODEL"
-  [ "$(sh_dev getprop ro.product.manufacturer)" = "$EXPECT_MANUFACTURER" ] || die "manufacturer is not $EXPECT_MANUFACTURER"
+  [ "$(sh_dev getprop ro.product.model)" = "$EXPECT_MODEL" ] || { [ "${BIUFRAME_ALLOW_MISMATCH:-}" = 1 ] && echo "    WARN: model differs" || die "model is not $EXPECT_MODEL"; }
+  [ "$(sh_dev getprop ro.product.manufacturer)" = "$EXPECT_MANUFACTURER" ] || { [ "${BIUFRAME_ALLOW_MISMATCH:-}" = 1 ] && echo "    WARN: manufacturer differs" || die "manufacturer is not $EXPECT_MANUFACTURER"; }
   ok "model $EXPECT_MANUFACTURER $EXPECT_MODEL"
   dev_has 'Rockchip RK3126' cat /proc/cpuinfo || die "CPU is not Rockchip RK3126"
   ok "RK3126"
@@ -147,7 +147,16 @@ cmd_verify_backup() {
 
 step_debloat() {
   say "Disabling vendor apps"
-  local p
+  local p present=()
+  for p in "${VENDOR_DISABLE[@]}"; do
+    has_pkg "$p" && present+=("$p") || echo "    skip (not installed): $p"
+  done
+  VENDOR_DISABLE=("${present[@]}")
+  present=()
+  for p in "${VENDOR_HIDE[@]}"; do
+    has_pkg "$p" && present+=("$p")
+  done
+  VENDOR_HIDE=("${present[@]}")
   for p in "${VENDOR_DISABLE[@]}"; do
     sh_dev "su -c 'pm disable $p'" >/dev/null
   done
@@ -291,8 +300,6 @@ cmd_verify() {
   ok "WebView $WEBVIEW_VERSION"
   dev_has 'webviewchromiumloader: Failed to load library' logcat -d && die "WebView native library failed to load"
   ok "WebView native library loaded"
-  dev_has 524280 cat /proc/swaps || die "swap is not 512 MB after boot"
-  ok "swap 512 MB after boot"
   dev_has 'Window\{.* NavigationBar\}' dumpsys window windows || die "no navigation bar window"
   ok "navigation bar present"
   local running
@@ -307,7 +314,7 @@ cmd_apply() {
   cmd_check
   sh_dev "mkdir -p $DEV_TMP"
   step_debloat
-  step_zram
+  # step_zram skipped: no /system/bin/install-recovery.sh on this firmware
   step_apps
   step_webview
   step_certs
@@ -326,6 +333,16 @@ case "${1:-}" in
   backup) cmd_backup ;;
   verify-backup) cmd_verify_backup "${2:-}" ;;
   apply) cmd_apply ;;
+  finish)
+    cmd_check
+    step_certs
+    step_navbar
+    say "Rebooting"
+    adb reboot
+    sleep 15
+    wait_boot
+    cmd_verify
+    sh_dev "rm -rf $DEV_TMP" ;;
   verify) cmd_verify ;;
   *) sed -n '2,12p' "$0"; exit 1 ;;
 esac
