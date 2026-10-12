@@ -211,7 +211,7 @@
   App.on('data', markStale);
   App.on('time', markStale);
   App.rerender = function () {
-    if (App.current) App.views[App.current].show($('#view-' + App.current), { rerender: true });
+    if (App.current && App.views[App.current]) App.views[App.current].show($('#view-' + App.current), { rerender: true });
   };
 
   // ------------------------------------------------------------ toasts (single, with undo)
@@ -327,7 +327,7 @@
 
   // ------------------------------------------------------------ boot
   App.start = function () {
-    App.setTime(15, 18); // demo default: a busy weekday afternoon
+    App.setTime(null); // real time (the demo drawer can still fake a time of day)
     fit();
     window.addEventListener('resize', fit);
     // Switch tabs the instant a finger lands (pointerdown), not on release. Keyboard "clicks"
@@ -347,7 +347,11 @@
     setInterval(tick, 1000);
     App.emit('ready');
     refreshStale(1500);
-    setTimeout(function () { App.toast('Tip: press and hold the <b>clock</b> in the sidebar for demo controls', { ms: 6000, icon: 'bolt' }); }, 1200);
+    if (window.HQ && HQ.attach) HQ.attach();
   };
-  document.addEventListener('DOMContentLoaded', function () { App.start(); });
+  // Start once the saved state has loaded from the Mac mini (or failed over to demo data).
+  (window.HQ_READY || Promise.resolve()).then(function () {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { App.start(); });
+    else App.start();
+  });
 })();

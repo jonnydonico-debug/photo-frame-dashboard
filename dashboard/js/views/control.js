@@ -5,6 +5,8 @@
   var V = { el: null, pending: {}, scene: null, camTimer: null, camAge: 4 };
 
   function dev(id) { return D.devices.filter(function (d) { return d.id === id; })[0]; }
+  var NO_GARAGE = { id: 'none', type: 'garage', name: 'Garage', state: 'closed' };
+  function garageDev() { return D.devices.filter(function (d) { return d.type === 'garage'; })[0] || NO_GARAGE; }
 
   // Optimistic device update: flip immediately, confirm (or revert) shortly after.
   App.setDevice = function (id, patch, opts) {
@@ -59,13 +61,13 @@
   function summary() {
     var lights = D.devices.filter(function (d) { return d.type === 'light' && d.on; });
     var unlocked = D.devices.filter(function (d) { return d.type === 'lock' && !d.locked; });
-    var garage = dev('g-door');
+    var garage = garageDev();
     var secure = !unlocked.length && garage.state === 'closed';
     var c = D.climate, m = D.media;
     return '<button class="sum' + (lights.length ? ' sum--warm' : '') + '" data-sum="lights"><span class="label">Lights</span><b class="num">' + lights.length + '</b><small>on in ' + unique(lights.map(function (l) { return l.room; })).length + ' rooms</small></button>' +
       '<button class="sum' + (secure ? '' : ' sum--warn') + '" data-sum="security"><span class="label">Security</span><b class="num">' + (secure ? 'Locked' : unlocked.length + (garage.state !== 'closed' ? 1 : 0)) + '</b><small>' + (secure ? 'All doors + garage' : (garage.state !== 'closed' ? 'Garage ' + garage.state : '') + (unlocked.length ? (garage.state !== 'closed' ? ' · ' : '') + unlocked.map(function (u) { return u.name; }).join(', ') : '') + (secure ? '' : ' open')) + '</small></button>' +
       '<button class="sum" data-sum="climate"><span class="label">Climate</span><b class="num">' + c.current + '°</b><small>' + (c.mode === 'off' ? 'System off' : (c.set > c.current ? 'Heating' : c.set < c.current ? 'Cooling' : 'Holding') + ' to ' + c.set + '°') + '</small></button>' +
-      '<button class="sum" data-sum="media"><span class="label">Media</span><b class="num">' + (m.playing ? 'Playing' : 'Paused') + '</b><small>' + m.room + ' speaker</small></button>';
+      '<button class="sum" data-sum="media"><span class="label">Media</span><b class="num">' + (m.playing ? 'Playing' : 'Paused') + '</b><small>' + App.esc(m.source === 'plex' ? 'Plex · ' + (m.room || '') : (m.room || '') + ' speaker') + '</small></button>';
   }
   function unique(a) { return a.filter(function (x, i) { return a.indexOf(x) === i; }); }
 
@@ -103,21 +105,23 @@
 
   function cams() {
     return '<div class="label">Cameras · snapshots every 20s</div><div class="cams">' + D.cameras.slice(0, 2).map(function (c) {
-      return '<button class="cam" data-cam="' + c.id + '"><img src="' + App.img(c.seed, 400, 250) + '" alt=""><span class="cam-name">' + c.name + '</span><span class="cam-age">' + V.camAge + 's ago</span></button>';
+      return '<button class="cam" data-cam="' + c.id + '"><img src="' + (c.url || App.img(c.seed, 400, 250)) + '" alt=""><span class="cam-name">' + c.name + '</span><span class="cam-age">' + V.camAge + 's ago</span></button>';
     }).join('') + '</div>';
   }
 
   function media() {
     var m = D.media;
-    return '<img class="np-art" src="' + App.img(m.seed, 160, 160) + '" alt="">' +
-      '<div class="np-text"><span class="label">' + m.room + '</span><b>' + m.title + '</b><span>' + m.artist + '</span></div>' +
-      '<button class="np-btn" data-play aria-label="Play/Pause">' + App.icon(m.playing ? 'pause' : 'play', 30) + '</button>';
+    var art = m.source === 'plex' ? m.art : App.img(m.seed || 'music', 160, 160);
+    return (art ? '<img class="np-art" src="' + art + '" alt="">' : '<span class="np-art"></span>') +
+      '<div class="np-text"><span class="label">' + App.esc(m.room || '') + '</span><b>' + App.esc(m.title || '') + '</b><span>' + App.esc(m.artist || '') + '</span></div>' +
+      (m.source === 'plex' ? '' : '<button class="np-btn" data-play aria-label="Play/Pause">' + App.icon(m.playing ? 'pause' : 'play', 30) + '</button>');
   }
 
   // Granular updates: an action repaints only what it touched (full paint() rebuilds ~270 nodes,
   // which costs ~350ms on the wall tablet).
   function paintTile(id) {
     var d = dev(id);
+    if (!d) return;
     [V.el && V.el.querySelector('.hc-rooms'), V.sheetBox].forEach(function (root) {
       var old = root && root.querySelector('[data-dev="' + id + '"]');
       if (!old) return;
@@ -204,7 +208,7 @@
 
   // Slide-to-confirm for the garage
   App.openGarageSheet = function () {
-    var g = dev('g-door'), opening = g.state === 'closed';
+    var g = garageDev(), opening = g.state === 'closed';
     App.sheet('<div class="sheet-pad"><div class="label">Garage door · currently ' + g.state + '</div><h2 class="serif sheet-h">' + (opening ? 'Open' : 'Close') + ' the garage?</h2>' +
       '<p class="sheet-p">' + (opening ? 'Make sure the driveway is clear.' : 'The door will stop and reverse if anything is in the way.') + '</p>' +
       '<div class="slide-confirm"><span class="sc-label">Slide to ' + (opening ? 'open' : 'close') + ' →</span><span class="sc-fill"></span><span class="sc-knob">' + App.icon('garage', 30) + '</span></div></div>', {
@@ -231,8 +235,8 @@
             close();
             g.state = opening ? 'opening' : 'closing';
             V.scene = null;
-            changed(['g-door']);
-            setTimeout(function () { g.state = opening ? 'open' : 'closed'; changed(['g-door']); App.toast('Garage ' + g.state, { icon: 'garage', ms: 2500 }); }, 4000);
+            changed([g.id]);
+            setTimeout(function () { g.state = opening ? 'open' : 'closed'; changed([g.id]); App.toast('Garage ' + g.state, { icon: 'garage', ms: 2500 }); }, 4000);
           } else { knob.style.transform = ''; fill.style.width = ''; }
         });
       }
@@ -240,7 +244,7 @@
   };
 
   App.cameraSheet = function (c) {
-    App.sheet('<div class="cam-big"><img src="' + App.img(c.seed, 1200, 750) + '" alt=""><div class="cam-big-bar"><span class="tk-live"><i></i>' + c.name + '</span><span class="label label--light">Snapshot · ' + V.camAge + 's ago</span></div></div>', { cls: 'sheet--cam' });
+    App.sheet('<div class="cam-big"><img src="' + (c.url || App.img(c.seed, 1200, 750)) + '" alt=""><div class="cam-big-bar"><span class="tk-live"><i></i>' + c.name + '</span><span class="label label--light">Snapshot · ' + V.camAge + 's ago</span></div></div>', { cls: 'sheet--cam' });
   };
 
   function listSheet(kind) {
@@ -279,12 +283,14 @@
     var prevScene = V.scene;
     Object.keys(s.set).forEach(function (k) {
       var d = dev(k), v = s.set[k];
+      if (!d) return;
       if (d.type === 'blind') d.pos = v;
       else if (v === 0) d.on = false;
       else { d.on = true; d.level = v; }
     });
     if (id === 'away' || id === 'night') D.devices.forEach(function (d) { if (d.type === 'lock') d.locked = true; });
     V.scene = id;
+    if (window.HQ && HQ.scene) HQ.scene(id);
     function diff() {
       return snapshot.filter(function (o) { var d = dev(o.id); return o.on !== d.on || o.level !== d.level || o.pos !== d.pos || o.locked !== d.locked; })
         .map(function (o) { return o.id; });

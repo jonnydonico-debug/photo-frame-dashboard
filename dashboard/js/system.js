@@ -45,7 +45,8 @@
     var u = el.querySelector('[data-unlock]');
     App.hold(u, 1000, {
       done: function () {
-        App.setDevice('e-door', { locked: false });
+        var front = D.devices.filter(function (d) { return d.type === 'lock'; })[0];
+        if (front) App.setDevice(front.id, { locked: false });
         u.classList.add('is-on');
         u.querySelector('span').textContent = 'Unlocked';
         App.toast('Front door unlocked · relocks in 2 min', { icon: 'unlock' });
@@ -98,7 +99,8 @@
   };
 
   App.garageOpenAlert = function () {
-    App.setDevice('g-door', { state: 'open' });
+    var g = D.devices.filter(function (d) { return d.type === 'garage'; })[0];
+    if (g) App.setDevice(g.id, { state: 'open' });
     App.banner({
       icon: 'garage', title: 'Garage open for 15 min', sub: 'No one is in the garage · Wes is 12 min away',
       action: 'Close garage', dismiss: 'Leave open',

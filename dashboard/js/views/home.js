@@ -121,7 +121,7 @@
   function status() {
     var lights = D.devices.filter(function (d) { return d.type === 'light' && d.on; }).length;
     var unlocked = D.devices.filter(function (d) { return d.type === 'lock' && !d.locked; });
-    var garage = D.devices.filter(function (d) { return d.type === 'garage'; })[0];
+    var garage = D.devices.filter(function (d) { return d.type === 'garage'; })[0] || { state: 'closed' };
     var secure = !unlocked.length && garage.state === 'closed';
     var secText = secure ? 'All locked' : (garage.state !== 'closed' ? 'Garage open' : unlocked[0].name + ' unlocked');
     return '<div class="label">Home</div>' +

@@ -1,0 +1,48 @@
+#!/bin/bash
+# homehq: control the house from the command line (used by the Hermes agent over iMessage).
+#   homehq summary                      what's on today, lights, locks, shopping, Plex
+#   homehq scene <name>                 movie | dinner | goodnight | away | morning …
+#   homehq light <name> on|off|<0-100>  e.g. homehq light "floor lamp" 40
+#   homehq lock|unlock <name>           doors
+#   homehq lights-off                   every light off
+#   homehq add <item…>                  add to the shopping list
+#   homehq got <item…>                  check an item off
+#   homehq event "<title>" <ISO start> [minutes] [person,person]
+#   homehq chore-done "<chore>" [person]
+#   homehq here|away <person> [status]  presence on the Today screen
+#   homehq say <text…>                  pop a message on the picture frame
+#   homehq plex-scan                    rescan every Plex library
+set -euo pipefail
+HQ="${HOMEHQ_HOME:-$HOME/HomeHQ}"
+URL="${HOMEHQ_URL:-http://localhost:8787}"
+TOKEN="${HOMEHQ_TOKEN:-$(/usr/bin/env node -e 'console.log(require(process.argv[1]).apiToken)' "$HQ/data/secrets.json" 2>/dev/null || true)}"
+[ -n "$TOKEN" ] || { echo "No API token. Is Home HQ installed in $HQ?" >&2; exit 1; }
+
+json() { /usr/bin/env node -e 'const a=process.argv.slice(1);const o={};for(let i=0;i<a.length;i+=2){let v=a[i+1];if(v==="true")v=true;else if(v==="false")v=false;else if(/^-?\d+(\.\d+)?$/.test(v))v=+v;else if(v.startsWith("[")){try{v=JSON.parse(v)}catch{}}o[a[i]]=v}console.log(JSON.stringify(o))' "$@"; }
+post() { curl -fsS -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' "$URL/api/agent/$1" -d "$2"; echo; }
+get() { curl -fsS -H "Authorization: Bearer $TOKEN" "$URL/api/agent/$1"; echo; }
+
+cmd="${1:-summary}"; shift || true
+case "$cmd" in
+  summary|status) get summary ;;
+  scene) post scene "$(json scene "$*")" ;;
+  light)
+    name="$1"; v="${2:-on}"
+    case "$v" in on) post device "$(json device "$name" on true)" ;; off) post device "$(json device "$name" on false)" ;;
+      *) if [ "$v" = 0 ]; then post device "$(json device "$name" on false)"; else post device "$(json device "$name" on true level "$v")"; fi ;; esac ;;
+  blind) post device "$(json device "$1" pos "${2:-100}")" ;;
+  lock) post device "$(json device "$*" locked true)" ;;
+  unlock) post device "$(json device "$*" locked false)" ;;
+  lights-off) post all-lights-off '{}' ;;
+  add) post grocery "$(json name "$*")" ;;
+  got) post grocery-done "$(json name "$*")" ;;
+  event)
+    people="[]"; [ -n "${4:-}" ] && people="$(/usr/bin/env node -e 'console.log(JSON.stringify(process.argv[1].split(",")))' "$4")"
+    post event "$(json title "$1" start "$2" minutes "${3:-60}" people "$people")" ;;
+  chore-done) if [ -n "${2:-}" ]; then post chore-done "$(json title "$1" who "$2")"; else post chore-done "$(json title "$1")"; fi ;;
+  here) post person "$(json person "$1" home true)" ;;
+  away) post person "$(json person "$1" home false status "${2:-Out}")" ;;
+  say|announce) post announce "$(json text "$*")" ;;
+  plex-scan) post plex/scan '{}' ;;
+  *) sed -n '2,16p' "$0"; exit 1 ;;
+esac

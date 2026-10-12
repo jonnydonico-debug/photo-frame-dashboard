@@ -6,6 +6,7 @@
   function src(p, big) {
     var w = p.o === 'p' ? 800 : 1600, h = p.o === 'p' ? 1200 : 1000;
     if (!big) { w = Math.round(w / 2); h = Math.round(h / 2); }
+    if (p.src) return p.src;
     return App.img(p.seed, w, h);
   }
   App.photoSrc = src;
