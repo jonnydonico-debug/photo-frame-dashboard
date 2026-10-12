@@ -1,0 +1,32 @@
+/* Settings — night mode schedule and lock screen. */
+.st { height: 100%; display: flex; flex-direction: column; gap: 18px; }
+.st-head { display: flex; align-items: baseline; gap: 16px; }
+.st-head h2 { margin: 0; font-size: 44px; line-height: 1; }
+.st-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: 1.25fr 1fr; gap: 20px; align-items: start; }
+.st-card { display: flex; flex-direction: column; gap: 22px; padding: 26px; }
+.st-title { display: flex; gap: 16px; align-items: flex-start; }
+.st-title h3 { margin: 0 0 4px; font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
+.st-title p { margin: 0; font-size: 17px; line-height: 1.35; color: var(--mute); }
+.st-ico { flex: none; width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; background: var(--paper-2); color: var(--ink-2); }
+.st-ico--night { background: #1F1C18; color: #E04030; }
+.st-seg { display: flex; width: 100%; }
+.st-seg button { flex: 1; min-height: 52px; font-size: 18px; padding: 0 10px; }
+.st-row { display: flex; flex-direction: column; gap: 10px; }
+
+.st-times { display: flex; align-items: center; gap: 10px; }
+.st-arrow { color: var(--mute); flex: none; }
+.st-time { flex: 1; display: flex; flex-direction: column; gap: 8px; transition: opacity .2s; }
+.st-time.is-off { opacity: .4; }
+.st-time-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; background: var(--paper); border-radius: 20px; padding: 8px; }
+.st-step { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(60, 45, 25, .12); touch-action: none; }
+.st-step:active { transform: scale(.92); background: var(--paper-2); }
+.st-clock { display: flex; align-items: baseline; gap: 6px; }
+.st-clock b { font-size: 44px; font-weight: 600; letter-spacing: -.03em; line-height: 1; }
+.st-clock span { font-size: 18px; font-weight: 600; color: var(--mute); }
+
+.st-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid var(--line); padding-top: 18px; }
+.st-status { margin: 0; font-size: 18px; color: var(--ink-2); line-height: 1.35; }
+.st-status b { color: var(--ink); }
+.st-lock { min-height: 64px; font-size: 20px; width: 100%; }
+.st-tip { display: flex; gap: 10px; align-items: flex-start; margin: 0; font-size: 16px; line-height: 1.35; color: var(--mute); }
+.st-tip svg { flex: none; margin-top: 1px; }

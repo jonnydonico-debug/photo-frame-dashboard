@@ -24,7 +24,53 @@
   App.dayStart = function (d) { var x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
   App.addDays = function (d, n) { var x = new Date(d); x.setDate(x.getDate() + n); return x; };
   App.sameDay = function (a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); };
-  App.isNight = function () { var h = App.now().getHours(); return h >= 22 || h < 6; };
+  // ------------------------------------------------------------ night mode (red, no blue light)
+  // Saved in DATA.display so every screen shares it; the Settings tab edits it.
+  var NIGHT_DEFAULT = { mode: 'auto', from: '21:30', to: '06:30', level: 'medium' };
+  App.LEVELS = { dim: .42, medium: .62, bright: .85 };
+  App.displayCfg = function () {
+    var d = D.display || {};
+    return {
+      night: Object.assign({}, NIGHT_DEFAULT, d.night || {}),
+      lockAfter: d.lockAfter == null ? 120 : d.lockAfter
+    };
+  };
+  App.toMin = function (hhmm) { var p = String(hhmm).split(':'); return (+p[0] || 0) * 60 + (+p[1] || 0); };
+  App.fmtHHMM = function (hhmm) { var m = App.toMin(hhmm), d = new Date(2000, 0, 1, Math.floor(m / 60), m % 60); return App.fmt.time(d); };
+  var preview = 0;
+  App.previewNight = function (sec) { preview = Date.now() + sec * 1000; applyNight(); setTimeout(applyNight, sec * 1000 + 50); };
+  App.isNight = function () {
+    var n = App.displayCfg().night;
+    if (preview > Date.now()) return true;
+    if (n.mode === 'on') return true;
+    if (n.mode === 'off') return false;
+    var now = App.now(), m = now.getHours() * 60 + now.getMinutes(), a = App.toMin(n.from), b = App.toMin(n.to);
+    return a === b ? false : a < b ? (m >= a && m < b) : (m >= a || m < b);
+  };
+  function applyNight() {
+    var stage = $('#stage');
+    if (!stage) return;
+    var on = App.isNight(), k = App.LEVELS[App.displayCfg().night.level] || App.LEVELS.medium;
+    // Lightness is inverted (paper -> black, ink -> bright) and every colour collapses onto the red channel.
+    var fm = document.getElementById('redshiftMatrix');
+    if (fm) fm.setAttribute('values', [-.2126 * k, -.7152 * k, -.0722 * k, 0, k, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0].map(function (x) { return +x.toFixed(4); }).join(' '));
+    stage.style.setProperty('--night-k', k);
+    if (on !== stage.classList.contains('is-red')) {
+      stage.classList.toggle('is-red', on);
+      document.querySelector('meta[name=theme-color]').setAttribute('content', on ? '#000000' : '#F3EFE8');
+      App.emit('night', on);
+    }
+  }
+  App.applyNight = applyNight;
+  App.on('minute', applyNight);
+  App.on('data', applyNight);
+
+  // Lock screen: the photo frame by day, the red clock at night.
+  App.lock = function () {
+    App.closeSheet();
+    App.go('home');
+    App.setMode(App.isNight() ? 'night' : 'ambient');
+  };
 
   var DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -293,19 +339,15 @@
   };
 
   // ------------------------------------------------------------ idle
-  App.idle = { home: 60, ambient: 120 };
+  App.idle = { home: 60 };
   var idleSec = 0;
   function onIdleTick() {
     idleSec++;
     var blocked = $('#takeover').classList.contains('is-open');
-    if (App.mode === 'nightdash' && idleSec >= 20) { App.setMode('night'); return; }
     if (App.mode !== 'day' || blocked) return;
-    if (idleSec === App.idle.home && App.current !== 'home') { App.closeSheet(); App.go('home'); }
-    if (idleSec >= App.idle.ambient) {
-      App.closeSheet();
-      App.go('home');
-      App.setMode(App.isNight() ? 'night' : 'ambient');
-    }
+    var lockAfter = App.displayCfg().lockAfter;
+    if (idleSec === App.idle.home && App.current !== 'home' && App.current !== 'settings') { App.closeSheet(); App.go('home'); }
+    if (lockAfter > 0 && idleSec >= lockAfter) App.lock();
   }
   App.resetIdle = function () { idleSec = 0; };
 
@@ -330,7 +372,7 @@
 
   // ------------------------------------------------------------ boot
   App.start = function () {
-    App.setTime(null); // real time (the demo drawer can still fake a time of day)
+    App.setTime(null); // real time
     fit();
     window.addEventListener('resize', fit);
     // Switch tabs the instant a finger lands (pointerdown), not on release. Keyboard "clicks"
@@ -351,6 +393,7 @@
     App.emit('ready');
     refreshStale(1500);
     if (window.HQ && HQ.attach) HQ.attach();
+    applyNight();
   };
   // Start once the saved state has loaded from the Mac mini (or failed over to demo data).
   (window.HQ_READY || Promise.resolve()).then(function () {

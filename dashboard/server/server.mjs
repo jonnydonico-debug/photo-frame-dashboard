@@ -35,7 +35,7 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 // ------------------------------------------------------------------ state keys
 // Keys the wall display / any screen on the home network may change (day-to-day use).
-const OPEN_KEYS = ['notes', 'games', 'chores', 'stars', 'week', 'groceries', 'events', 'devices', 'climate'];
+const OPEN_KEYS = ['display', 'notes', 'games', 'chores', 'stars', 'week', 'groceries', 'events', 'devices', 'climate'];
 // Keys only an admin (or the agent token) may change.
 const LIVE_KEYS = ['bart', 'music'];   // refreshed constantly by the server, not saved
 const ADMIN_KEYS = ['commute', 'bart', 'music', 'people', 'family', 'routines', 'stores', 'catOrder', 'catalog', 'usuals', 'rooms',
@@ -505,6 +505,14 @@ async function api(req, res, url) {
           const n = incoming[d.id]; if (!n) return d;
           const out = Object.assign({}, d); DEVICE_STATE_FIELDS.forEach(f => { if (f in n) out[f] = n[f]; }); return out;
         });
+      } else if (k === 'display') {
+        // Night mode schedule + auto-lock, set from the frame's Settings tab.
+        const n = (v && v.night) || {}, hhmm = x => /^([01]\d|2[0-3]):[0-5]\d$/.test(x) ? x : null;
+        clean.display = {
+          night: { mode: ['auto', 'on', 'off'].includes(n.mode) ? n.mode : 'auto', from: hhmm(n.from) || '21:30', to: hhmm(n.to) || '06:30',
+            level: ['dim', 'medium', 'bright'].includes(n.level) ? n.level : 'medium' },
+          lockAfter: [0, 60, 120, 300, 600].includes(+(v && v.lockAfter)) ? +v.lockAfter : 120
+        };
       } else clean[k] = v;
     }
     if (!Object.keys(clean).length) return send(res, 200, { rev });

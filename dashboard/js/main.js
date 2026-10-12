@@ -17,5 +17,6 @@ import './views/notes.js';
 import './views/games.js';
 import './views/control.js';
 import './views/agents.js';
+import './views/settings.js';
 import './views/ambient.js';
 import './diag.js';
