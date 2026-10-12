@@ -140,6 +140,22 @@ function viaInternet(req) { return !!(req.headers['cf-connecting-ip'] || req.hea
 // Cloudflare Access adds this after someone signs in (or a home-IP bypass rule lets the frame through).
 // Treat those like the home network: day-to-day changes allowed, admin still needs the PIN.
 function viaAccess(req) { return viaInternet(req) && !!req.headers['cf-access-jwt-assertion']; }
+// The house's own public address(es), learned from Cloudflare. A request through the tunnel from
+// that address is the frame (or a phone) on the home Wi-Fi, so it gets the same rights as the LAN.
+let publicIps = [];
+async function learnPublicIp() {
+  const found = [];
+  for (const host of ['https://1.1.1.1/cdn-cgi/trace', 'https://[2606:4700:4700::1111]/cdn-cgi/trace']) {
+    try { const t = await (await fetch(host, { signal: AbortSignal.timeout(5000) })).text(); const m = t.match(/^ip=(.+)$/m); if (m) found.push(m[1].trim()); } catch {}
+  }
+  if (found.length) publicIps = found;
+}
+function sameHome(ip) {
+  if (!ip) return false;
+  return publicIps.some(h => h === ip || (h.includes(':') && ip.includes(':') && h.split(':').slice(0, 4).join(':') === ip.split(':').slice(0, 4).join(':')));
+}
+function fromHomeViaTunnel(req) { return viaInternet(req) && sameHome(String(req.headers['cf-connecting-ip'] || '')); }
+learnPublicIp(); setInterval(learnPublicIp, 30 * 60000);
 const isAdminHost = req => /^admin\./i.test(String(req.headers.host || ''));
 // Home network, Tailscale (100.64/10) or this machine.
 function isPrivate(ip) {
@@ -354,12 +370,12 @@ function personId(q) {
 
 // ------------------------------------------------------------------ routes
 async function api(req, res, url) {
-  const p = url.pathname, m = req.method, admin = isAdmin(req), ip = clientIp(req), home = (isPrivate(ip) && !viaInternet(req)) || viaAccess(req);
+  const p = url.pathname, m = req.method, admin = isAdmin(req), ip = clientIp(req), home = (isPrivate(ip) && !viaInternet(req)) || viaAccess(req) || fromHomeViaTunnel(req);
   const needAdmin = () => { if (!admin) { send(res, 401, { error: 'Admin login required' }); return true; } return false; };
   if (m !== 'GET' && m !== 'HEAD' && !admin && req.headers['x-hq'] !== '1') return send(res, 403, { error: 'Missing X-HQ header' });
 
   if (p === '/api/state' && m === 'GET') return send(res, 200, { rev, state });
-  if (p === '/api/me') return send(res, 200, { admin, home, demoBuild: FROM_SOURCE });
+  if (p === '/api/me') return send(res, 200, { admin, home, demoBuild: FROM_SOURCE, publicIps: admin ? publicIps : undefined });
   if (p === '/api/events') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
     res.write('retry: 3000\ndata: ' + JSON.stringify({ type: 'hello', rev }) + '\n\n');
@@ -603,6 +619,17 @@ const server = http.createServer(async (req, res) => {
     if (!res.headersSent) send(res, e.code >= 400 && e.code < 600 ? e.code : 500, { error: e.message });
   }
 });
+
+// Updating ~/HomeHQ/app restarts the server (launchd's KeepAlive starts it again).
+if (process.env.HOMEHQ_DATA) {
+  let t = null;
+  try {
+    fs.watch(ROOT, { recursive: true }, (ev, f) => {
+      if (!f || /^data\//.test(f)) return;
+      clearTimeout(t); t = setTimeout(() => { log('App files changed: restarting'); if (saveTimer) save(); process.exit(0); }, 1500);
+    });
+  } catch {}
+}
 
 server.listen(PORT, HOST, () => {
   const addrs = Object.values(os.networkInterfaces()).flat().filter(a => a && a.family === 'IPv4' && !a.internal).map(a => a.address);
