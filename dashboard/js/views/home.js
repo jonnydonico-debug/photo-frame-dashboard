@@ -81,9 +81,10 @@
   }
   function bart() {
     var B = D.bart || {};
+    var walkKnown = D.commute && D.commute.stations && D.commute.stations.some(function (s) { return s.walk; });
     return '<div class="hm-card-h"><span class="label">' + App.icon('train', 18) + ' BART</span>' +
-      (B.updated ? '<span class="hm-upd">' + App.fmt.time(new Date(B.updated)) + '</span>' : '') + '</div>' +
-      (B.advisory ? '<div class="hm-adv">' + App.esc(B.advisory) + '</div>' : '') +
+      '<span class="hm-upd">' + (walkKnown ? '<i class="hm-key"></i>too soon to walk · ' : '') + (B.updated ? App.fmt.time(new Date(B.updated)) : '') + '</span></div>' +
+      (B.advisory ? '<button class="hm-adv" data-adv>' + App.icon('bell', 18) + '<span>' + App.esc(B.advisory) + '</span></button>' : '') +
       station('PLZA') + station('DELN') +
       (!D.commute ? '<div class="hm-hint">Add your address in Admin → Settings for walking and driving times.</div>' : '');
   }
@@ -146,6 +147,11 @@
           '  <div class="hm-music card" data-go="music"></div>' +
           '</div></div>';
         el.addEventListener('click', function (e) {
+          if (e.target.closest('[data-adv]')) {
+            e.stopPropagation();
+            App.sheet('<div class="sheet-pad"><div class="label">BART service advisory</div><p class="hm-adv-full">' + App.esc((D.bart || {}).advisory || '') + '</p></div>');
+            return;
+          }
           var c = e.target.closest('[data-mcmd]');
           if (c) { e.stopPropagation(); App.musicCmd(c.dataset.mcmd); return; }
           var g = e.target.closest('[data-go]');

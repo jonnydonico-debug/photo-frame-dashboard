@@ -60,7 +60,11 @@
 .hm-card-h .label { display: flex; align-items: center; gap: 6px; }
 .hm-upd { font-size: var(--fs-min); color: var(--mute); font-variant-numeric: tabular-nums; }
 .hm-bart { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: hidden; padding: 14px 20px; }
-.hm-adv { font-size: 15px; line-height: 1.25; color: #8A4B00; background: rgb(var(--amber-rgb) / .14); border-radius: 10px; padding: 8px 10px; max-height: 3.9em; overflow: hidden; }
+.hm-adv { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 0 10px; border-radius: 10px; background: rgb(var(--amber-rgb) / .16); color: #8A4B00; font-size: 15px; font-weight: 600; text-align: left; flex: none; }
+.hm-adv svg { flex: none; }
+.hm-adv span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hm-adv-full { font-size: 22px; line-height: 1.4; margin: 10px 0 0; }
+.hm-key { display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: var(--line); margin-right: 5px; vertical-align: -1px; }
 .hm-stn { display: flex; flex-direction: column; gap: 2px; flex: none; }
 .hm-stn + .hm-stn { border-top: 1px solid var(--line); padding-top: 8px; }
 .hm-stn-h { display: flex; align-items: center; gap: 14px; min-height: 28px; }
@@ -75,7 +79,7 @@
 .hm-dest { flex: 1; font-size: 18px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hm-mins { display: flex; align-items: baseline; gap: 10px; font-variant-numeric: tabular-nums; }
 .hm-mins b { font-size: 22px; font-weight: 800; font-stretch: 75%; min-width: 26px; text-align: right; }
-.hm-mins b.is-miss { color: var(--mute); font-weight: 600; text-decoration: line-through; text-decoration-thickness: 1px; }
+.hm-mins b.is-miss { color: #B5AE9F; font-weight: 600; }
 .hm-mins small { font-size: 13px; color: var(--mute); margin-left: -4px; }
 .hm-none, .hm-hint { font-size: 16px; color: var(--mute); padding: 4px 0; }
 .hm-hint { margin-top: auto; font-size: 15px; }

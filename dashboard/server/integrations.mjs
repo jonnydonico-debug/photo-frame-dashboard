@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { createSonos } from './sonos.mjs';
 
 const UA = 'HomeHQ/1.0 (family dashboard on a home Mac mini)';
 const j = async (url, opts = {}) => {
@@ -15,6 +16,7 @@ const j = async (url, opts = {}) => {
 export function createIntegrations(ctx) {
   const { getState, commit, secrets, saveSecrets, log, dataDir, photosDir } = ctx;
   const S = () => getState();
+  const sonos = createSonos({ log });
 
   // ---------------------------------------------------------------- places + routing (OpenStreetMap)
   const BART_STATIONS = [
@@ -293,7 +295,7 @@ export function createIntegrations(ctx) {
         album: it && it.album ? it.album.name : '', art: it ? img((it.album && it.album.images) || it.images, 300) : '',
         uri: it ? it.uri : '', progress: p ? p.progress_ms : 0, duration: it ? it.duration_ms : 0, at: Date.now(),
         shuffle: !!(p && p.shuffle_state), repeat: p ? p.repeat_state : 'off',
-        device: p && p.device ? { id: p.device.id, name: p.device.name, type: p.device.type, volume: p.device.volume_percent } : null,
+        device: p && p.device ? { id: p.device.id, name: p.device.name, type: p.device.type, volume: p.device.volume_percent, restricted: !!p.device.is_restricted || !p.device.id } : null,
         devices: devices.map(d => ({ id: d.id, name: d.name, type: d.type, active: d.is_active, volume: d.volume_percent, restricted: d.is_restricted }))
       };
       spStatus = { ok: true, checked: new Date().toISOString() };
@@ -305,6 +307,16 @@ export function createIntegrations(ctx) {
   let spTimer = null;
   function startSpotify() { if (!SP().refreshToken) return; refreshSpotify(); clearInterval(spTimer); spTimer = setInterval(refreshSpotify, 5000); }
   async function spotifyCommand(b) {
+    // Spotify refuses remote control of "restricted" speakers (Sonos). Talk to the Sonos directly.
+    const cur = spState.device;
+    if (cur && cur.restricted && !b.uri && ['play', 'pause', 'next', 'prev', 'volume'].includes(b.action)) {
+      const room = await sonos.find(cur.name);
+      if (!room) throw new Error(cur.name + ' can only be controlled from the Sonos or Spotify app (it wasn’t found on the home network)');
+      await sonos.command(room, b.action, b.volume);
+      if (b.action === 'play' || b.action === 'pause') { spState = Object.assign({}, spState, { playing: b.action === 'play', at: Date.now() }); commit({ music: spState }, 'server'); }
+      setTimeout(refreshSpotify, 900);
+      return { ok: true, via: 'sonos' };
+    }
     const dev = b.device ? '?device_id=' + encodeURIComponent(b.device) : '';
     switch (b.action) {
       case 'play': await sp('PUT', '/me/player/play' + dev, b.uri ? (/:track:/.test(b.uri) ? { uris: [b.uri] } : { context_uri: b.uri }) : undefined); break;
@@ -358,7 +370,7 @@ export function createIntegrations(ctx) {
 
   return {
     start, geocode, routeBoth, refreshCommute, refreshBart, syncAlbum, albumStatus: () => albumStatus, albumToken, resolveAlbumLink,
-    spotifyAuthUrl, spotifyCallback, spotifyCommand, spotifyLibrary, spotifySearch, spotifyStatus: () => spStatus,
+    sonos, spotifyAuthUrl, spotifyCallback, spotifyCommand, spotifyLibrary, spotifySearch, spotifyStatus: () => spStatus,
     spotifyDisconnect() { secrets.spotify = { clientId: SP().clientId, clientSecret: SP().clientSecret }; saveSecrets(); clearInterval(spTimer); spState = { connected: false }; commit({ music: { connected: false } }, 'server'); },
     BART_STATIONS
   };
