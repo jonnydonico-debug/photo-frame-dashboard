@@ -35,7 +35,7 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 // ------------------------------------------------------------------ state keys
 // Keys the wall display / any screen on the home network may change (day-to-day use).
-const OPEN_KEYS = ['chores', 'stars', 'week', 'groceries', 'events', 'devices', 'climate'];
+const OPEN_KEYS = ['notes', 'games', 'chores', 'stars', 'week', 'groceries', 'events', 'devices', 'climate'];
 // Keys only an admin (or the agent token) may change.
 const LIVE_KEYS = ['bart', 'music'];   // refreshed constantly by the server, not saved
 const ADMIN_KEYS = ['commute', 'bart', 'music', 'people', 'family', 'routines', 'stores', 'catOrder', 'catalog', 'usuals', 'rooms',
@@ -56,13 +56,17 @@ function demoState() {
   return out;
 }
 function defaultSettings() {
-  return { title: 'Home HQ', units: 'fahrenheit', place: '', address: '', lat: null, lon: null, demo: true, hiddenViews: [], schema: 2 };
+  return { title: 'Steinnheimer & Armada Home', units: 'fahrenheit', place: '', address: '', lat: null, lon: null, demo: true, hiddenViews: [], schema: 3 };
 }
+const HOUSEHOLD = [
+  { id: 'jd', name: 'JD', color: '#2D5BFF', rgb: '45 91 255', ink: '#FFFFFF', home: true, status: 'Home' },
+  { id: 'georgia', name: 'Georgia', color: '#E4007C', rgb: '228 0 124', ink: '#FFFFFF', home: true, status: 'Home' }
+];
 function blankState() {
   // Everything empty except generic helpers (routines, aisle order, the grocery catalogue).
   const s = demoState();
   Object.assign(s, {
-    people: [], events: [], chores: [], groceries: [], photos: [], stars: {}, week: {}, agents: [],
+    people: HOUSEHOLD.map(p => Object.assign({}, p)), notes: [], games: {}, events: [], chores: [], groceries: [], photos: [], stars: {}, week: {}, agents: [],
     rooms: [], devices: [], scenes: [], cameras: [],
     stores: [{ id: 'store', name: 'Groceries' }],
     climate: { enabled: false, current: 20, set: 20, mode: 'off', humidity: 0, outside: null },
@@ -95,6 +99,15 @@ if (savedSchema < 2) {
   if (state.settings.demo !== false) { state = blankState(); state.photos = keepPhotos; }
   state.settings = Object.assign(defaultSettings(), state.settings, keep, { schema: 2, demo: false, hiddenViews: ['calendar', 'tasks', 'agents'] });
   log('Updated saved data to schema 2 (demo household removed)');
+  saveSoon();
+}
+if (savedSchema < 3) {
+  // v3: the household is JD and Georgia; notes and games.
+  if (!(state.people || []).some(p => p.id === 'jd' || p.id === 'georgia')) state.people = HOUSEHOLD.map(p => Object.assign({}, p));
+  state.notes = state.notes || []; state.games = state.games || {};
+  if (!state.settings.title || state.settings.title === 'Home HQ') state.settings.title = 'Steinnheimer & Armada Home';
+  state.settings.schema = 3;
+  log('Updated saved data to schema 3 (JD + Georgia, notes, games)');
   saveSoon();
 }
 

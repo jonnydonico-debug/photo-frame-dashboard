@@ -101,3 +101,7 @@
 .hm-music-empty b { font-family: var(--serif); font-weight: 400; font-size: 30px; color: var(--ink); }
 .hm-music-empty span { font-size: 17px; color: var(--mute); }
 .hm-art--none { display: grid; place-items: center; color: var(--mute); }
+.hm .h-clock { justify-content: space-between; }
+.hm-house { font-size: 27px; line-height: 1.05; font-style: italic; color: var(--ink-2); padding-top: 2px; }
+.hm .h-time { font-size: 128px; }
+.hm .h-date { margin-top: 10px; }

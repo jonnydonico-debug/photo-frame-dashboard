@@ -13,8 +13,8 @@
 
   // ------------------------------------------------------------ clock + weather
   function clock() {
-    var n = App.now();
-    return '<div class="h-time num">' + App.fmt.time(n, false) + '<span class="h-ampm">' + App.fmt.ampm(n) + '</span></div>' +
+    var n = App.now(), title = (D.settings && D.settings.title) || '';
+    return (title ? '<div class="hm-house serif">' + App.esc(title) + '</div>' : '') + '<div class="h-time num">' + App.fmt.time(n, false) + '<span class="h-ampm">' + App.fmt.ampm(n) + '</span></div>' +
       '<div class="h-date"><b>' + App.fmt.day(n) + '</b> ' + App.fmt.month(n) + ' ' + n.getDate() + '</div>';
   }
 
@@ -56,7 +56,7 @@
     var B = D.bart || {}, C = D.commute || {};
     var s = (B.stations || []).filter(function (x) { return x.code === code; })[0];
     var c = (C.stations || []).filter(function (x) { return x.code === code; })[0];
-    var name = (s && s.name) || (c && c.name) || code;
+    var name = (s && s.name) || (c && c.name) || { PLZA: 'El Cerrito Plaza', DELN: 'El Cerrito del Norte' }[code] || code;
     var walk = c && c.walk ? c.walk.min : null;
     var lines = (s && s.lines) || [];
     // Room for 3 trains a station, or 2 while a service alert is showing

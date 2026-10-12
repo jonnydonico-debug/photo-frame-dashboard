@@ -53,7 +53,7 @@ function fmtWhen(e) {
 }
 function photoUrl(p, w) { return p.src || 'https://picsum.photos/seed/' + p.seed + '/' + (w || 300) + '/' + Math.round((w || 300) * (p.o === 'p' ? 1.4 : 0.66)); }
 const ICONS = ['sunrise', 'utensils', 'film', 'away', 'moon', 'sun', 'bulb', 'heart', 'star', 'home', 'bolt', 'music'];
-const VIEWS = [['home', 'Today'], ['calendar', 'Calendar'], ['tasks', 'Chores'], ['shopping', 'Shopping'], ['music', 'Music'], ['photos', 'Photos'], ['map', 'Map'], ['control', 'Home'], ['agents', 'Agents']];
+const VIEWS = [['home', 'Today'], ['calendar', 'Calendar'], ['tasks', 'Chores'], ['shopping', 'Shopping'], ['notes', 'Notes'], ['music', 'Music'], ['photos', 'Photos'], ['map', 'Map'], ['games', 'Games'], ['control', 'Home'], ['agents', 'Agents']];
 
 // ------------------------------------------------------------------ schema-driven list editor
 // field: { k, label, type: text|number|color|check|select|people|datetime|date|textarea|shortcut|json, opts: () => [[v,label]] }

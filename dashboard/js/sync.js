@@ -9,9 +9,9 @@
   var CLIENT = Math.random().toString(36).slice(2, 10);
   var KEYS = ['people', 'family', 'routines', 'chores', 'stars', 'week', 'stores', 'catOrder', 'groceries', 'catalog',
     'usuals', 'rooms', 'devices', 'climate', 'media', 'cameras', 'scenes', 'weather', 'photos', 'agents', 'events', 'settings',
-    'commute', 'bart', 'music'];
+    'commute', 'bart', 'music', 'notes', 'games'];
   var LIVE = ['bart', 'music', 'commute', 'weather', 'climate', 'media'];
-  var OPEN = ['chores', 'stars', 'week', 'groceries', 'events', 'devices', 'climate'];
+  var OPEN = ['notes', 'games', 'chores', 'stars', 'week', 'groceries', 'events', 'devices', 'climate'];
   var snap = {}, rev = 0, online = false, pending = null, pushTimer = null, sceneHint = null;
 
   var HQ = window.HQ = { client: CLIENT, online: function () { return online; } };
