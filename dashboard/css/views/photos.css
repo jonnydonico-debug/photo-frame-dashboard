@@ -50,5 +50,5 @@
 }
 .ph-btn:active { transform: scale(.92); }
 .ph-btn--fav { padding: 0 24px 0 20px; }
-.ph-btn--fav.is-on { background: #E4007C; }
+.ph-btn--fav.is-on { background: #A8644A; }
 .ph-btn--fav.is-on .i { fill: currentColor; }

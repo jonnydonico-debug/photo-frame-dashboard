@@ -59,7 +59,7 @@ const VIEWS = [['home', 'Today'], ['calendar', 'Calendar'], ['tasks', 'Chores'],
 // field: { k, label, type: text|number|color|check|select|people|datetime|date|textarea|shortcut|json, opts: () => [[v,label]] }
 const SCHEMAS = {
   people: {
-    title: 'Family', add: () => ({ id: rid('p'), name: 'New person', color: '#2D5BFF', rgb: '45 91 255', ink: '#FFFFFF', home: true, status: 'Home' }),
+    title: 'Family', add: () => ({ id: rid('p'), name: 'New person', color: '#6E8069', rgb: '110 128 105', ink: '#FFFFFF', home: true, status: 'Home' }),
     sum: p => `<span class="dot" style="background:${esc(p.color)}"></span><b>${esc(p.name)}</b><small>${p.home ? 'Home' : esc(p.status || 'Away')}${p.eta ? ' · ETA ' + p.eta + ' min' : ''}</small>`,
     fields: [{ k: 'name', label: 'Name' }, { k: 'color', label: 'Colour', type: 'color' }, { k: 'home', label: 'At home', type: 'check' },
       { k: 'status', label: 'Status when away', ph: 'At the office' }, { k: 'eta', label: 'ETA (minutes)', type: 'number' }, { k: 'age', label: 'Age (kids earn stars)', type: 'number' }],

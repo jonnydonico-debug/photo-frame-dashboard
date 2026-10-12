@@ -10,8 +10,8 @@
 
   function people() {
     var ps = D.people && D.people.length >= 2 ? D.people.slice(0, 2) : [
-      { id: 'jd', name: 'JD', color: '#2D5BFF', rgb: '45 91 255', ink: '#FFFFFF' },
-      { id: 'georgia', name: 'Georgia', color: '#E4007C', rgb: '228 0 124', ink: '#FFFFFF' }];
+      { id: 'jd', name: 'JD', color: '#6E8069', rgb: '110 128 105', ink: '#FFFFFF' },
+      { id: 'georgia', name: 'Georgia', color: '#A8644A', rgb: '168 100 74', ink: '#FFFFFF' }];
     return ps;
   }
   function chessData() {

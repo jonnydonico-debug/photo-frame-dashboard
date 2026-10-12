@@ -56,11 +56,11 @@ function demoState() {
   return out;
 }
 function defaultSettings() {
-  return { title: 'Steinnheimer & Armada Home', units: 'fahrenheit', place: '', address: '', lat: null, lon: null, demo: true, hiddenViews: [], schema: 3 };
+  return { title: 'Steinnheimer & Armada Home', units: 'fahrenheit', place: '', address: '', lat: null, lon: null, demo: true, hiddenViews: [], schema: 4 };
 }
 const HOUSEHOLD = [
-  { id: 'jd', name: 'JD', color: '#2D5BFF', rgb: '45 91 255', ink: '#FFFFFF', home: true, status: 'Home' },
-  { id: 'georgia', name: 'Georgia', color: '#E4007C', rgb: '228 0 124', ink: '#FFFFFF', home: true, status: 'Home' }
+  { id: 'jd', name: 'JD', color: '#6E8069', rgb: '110 128 105', ink: '#FFFFFF', home: true, status: 'Home' },
+  { id: 'georgia', name: 'Georgia', color: '#A8644A', rgb: '168 100 74', ink: '#FFFFFF', home: true, status: 'Home' }
 ];
 function blankState() {
   // Everything empty except generic helpers (routines, aisle order, the grocery catalogue).
@@ -108,6 +108,17 @@ if (savedSchema < 3) {
   if (!state.settings.title || state.settings.title === 'Home HQ') state.settings.title = 'Steinnheimer & Armada Home';
   state.settings.schema = 3;
   log('Updated saved data to schema 3 (JD + Georgia, notes, games)');
+  saveSoon();
+}
+if (savedSchema < 4) {
+  // v4: earth-tone redesign. Recolor JD and Georgia unless someone already picked their own color.
+  const old = { jd: '#2D5BFF', georgia: '#E4007C' };
+  (state.people || []).forEach(p => {
+    const h = HOUSEHOLD.find(x => x.id === p.id);
+    if (h && (p.color || '').toUpperCase() === old[p.id]) { p.color = h.color; p.rgb = h.rgb; p.ink = h.ink; }
+  });
+  state.settings.schema = 4;
+  log('Updated saved data to schema 4 (earth-tone colors)');
   saveSoon();
 }
 
@@ -490,7 +501,7 @@ async function api(req, res, url) {
       if (k === 'devices' && !admin) {
         // The wall display may flip device state but not rename/remap devices.
         const incoming = Object.fromEntries((v || []).map(d => [d.id, d]));
-        clean.devices = state.devices.map(d => {
+        clean.devices = (state.devices || []).map(d => {
           const n = incoming[d.id]; if (!n) return d;
           const out = Object.assign({}, d); DEVICE_STATE_FIELDS.forEach(f => { if (f in n) out[f] = n[f]; }); return out;
         });

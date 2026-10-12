@@ -151,3 +151,45 @@ details textarea { font: 13px/1.4 ui-monospace, Menlo, monospace; margin-top: 8p
 .steps { margin: 0 0 12px; padding-left: 20px; font-size: 15px; }
 .steps li { margin-bottom: 8px; }
 code.sel { user-select: all; -webkit-user-select: all; word-break: break-all; display: inline-block; margin-top: 4px; }
+
+/* ============================================================
+   Earth-tone, Apple-style refresh (matches css/theme.css on the frame)
+   ============================================================ */
+:root {
+  --paper: #F3EFE8; --paper-2: #EAE4D9; --card: #FCFAF6; --ink: #1F1C18; --ink-2: #4A443C; --mute: #8A8276; --line: rgba(60, 50, 35, .10);
+  --accent: #A8644A; --sage: #6E8069; --alert: #B4533A; --ok: #5F7D57; --amber: #C88F3E; --warm: #E2C08C;
+  --sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif;
+  --serif: 'New York', 'Instrument Serif', ui-serif, Georgia, serif;
+  --r: 20px;
+  --shadow: 0 1px 2px rgba(60, 45, 25, .05), 0 8px 24px rgba(60, 45, 25, .06);
+}
+body { font: 16px/1.45 var(--sans); letter-spacing: -.005em; -webkit-font-smoothing: antialiased; }
+.serif { font-family: var(--sans); font-weight: 700; letter-spacing: -.02em; }
+.brand { font-size: 26px; }
+.brand i, .login-card h1 i { color: var(--accent); font-style: normal; }
+.tabs { background: rgba(243, 239, 232, .82); -webkit-backdrop-filter: saturate(1.6) blur(20px); backdrop-filter: saturate(1.6) blur(20px); border-bottom: 1px solid var(--line); }
+.tabs a { font-weight: 500; font-stretch: 100%; color: var(--ink-2); }
+.tabs a.is-on { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(60, 45, 25, .12); }
+.block { border: 0; box-shadow: var(--shadow); padding: 18px 18px 20px; margin-bottom: 16px; }
+.block-h h2 { font-size: 24px; }
+.btn { border: 0; background: var(--paper-2); color: var(--ink); font-weight: 600; }
+.btn--solid { background: var(--accent); color: #fff; }
+.btn--ghost { background: transparent; color: var(--mute); }
+.btn--danger { background: rgba(180, 83, 58, .12); color: var(--alert); }
+.linkbtn { color: var(--accent); text-decoration: none; font-weight: 600; }
+input, select, textarea { background: var(--paper); border: 1px solid transparent; border-radius: 12px; }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px rgba(168, 100, 74, .15); }
+input[type=checkbox], input[type=range] { accent-color: var(--accent); }
+.f-l { font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--mute); }
+.item.is-open { background: var(--paper); }
+.tog { border: 0; background: var(--paper-2); font-weight: 600; }
+.tog.is-on { background: var(--sage); color: #fff; }
+.chip { border: 0; background: var(--paper-2); font-weight: 500; }
+.stats b { font-family: var(--sans); font-weight: 700; font-stretch: 100%; letter-spacing: -.03em; }
+.stats span { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 13px; }
+.ph { border: 0; box-shadow: var(--shadow); border-radius: 14px; }
+.ph.is-fav { box-shadow: 0 0 0 2px var(--accent); }
+.login-card { border: 0; box-shadow: var(--shadow); border-radius: 26px; padding: 28px; }
+.login-card h1 { font-family: var(--sans); font-weight: 700; letter-spacing: -.03em; font-size: 34px; }
+.flash { background: rgba(31, 28, 24, .88); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+code, pre { background: var(--paper-2); }

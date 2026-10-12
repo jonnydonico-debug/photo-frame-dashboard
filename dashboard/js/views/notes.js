@@ -4,7 +4,7 @@
   var D = window.DATA;
   var V = { el: null, by: null };
 
-  function people() { return D.people && D.people.length ? D.people : [{ id: 'jd', name: 'JD', color: '#2D5BFF', rgb: '45 91 255', ink: '#FFFFFF' }]; }
+  function people() { return D.people && D.people.length ? D.people : [{ id: 'jd', name: 'JD', color: '#6E8069', rgb: '110 128 105', ink: '#FFFFFF' }]; }
   function ago(t) {
     var m = Math.round((Date.now() - t) / 60000);
     if (m < 1) return 'just now';

@@ -64,7 +64,7 @@
     var other = m === 'drive' ? 'walk' : 'drive';
     if (r[other] && r[other].line) L.polyline(r[other].line, { color: '#7A756B', weight: 4, opacity: .45, dashArray: '6 8' }).addTo(V.layers);
     if (r[m] && r[m].line) {
-      var line = L.polyline(r[m].line, { color: m === 'drive' ? '#2D5BFF' : '#00A36C', weight: 7, opacity: .9 }).addTo(V.layers);
+      var line = L.polyline(r[m].line, { color: m === 'drive' ? '#A8644A' : '#5F7D57', weight: 7, opacity: .9 }).addTo(V.layers);
       V.map.fitBounds(line.getBounds().extend([h.lat, h.lon]), { paddingTopLeft: [440, 40], paddingBottomRight: [40, 40] });
     }
   }
