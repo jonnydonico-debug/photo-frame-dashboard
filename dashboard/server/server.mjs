@@ -437,6 +437,8 @@ async function api(req, res, url) {
       if (p === '/api/music' && m === 'POST') return send(res, 200, await X.spotifyCommand(await readBody(req)));
       if (p === '/api/music/library') return send(res, 200, await X.spotifyLibrary());
       if (p === '/api/music/search') return send(res, 200, await X.spotifySearch(url.searchParams.get('q') || ''));
+      if (p === '/api/music/items') return send(res, 200, await X.spotifyItems(url.searchParams.get('uri') || ''));
+      if (p === '/api/music/sonos') return send(res, 200, await X.sonos.debug());
     } catch (e) { return send(res, e.status === 401 ? 401 : 409, { error: e.message }); }
     return send(res, 404, { error: 'Not found' });
   }

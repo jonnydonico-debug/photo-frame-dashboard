@@ -296,7 +296,9 @@ export function createIntegrations(ctx) {
         uri: it ? it.uri : '', progress: p ? p.progress_ms : 0, duration: it ? it.duration_ms : 0, at: Date.now(),
         shuffle: !!(p && p.shuffle_state), repeat: p ? p.repeat_state : 'off',
         device: p && p.device ? { id: p.device.id, name: p.device.name, type: p.device.type, volume: p.device.volume_percent, restricted: !!p.device.is_restricted || !p.device.id } : null,
-        devices: devices.map(d => ({ id: d.id, name: d.name, type: d.type, active: d.is_active, volume: d.volume_percent, restricted: d.is_restricted }))
+        context: p && p.context ? p.context.uri : '',
+        devices: speakerList(p && p.device),
+        target: secrets.musicTarget || null
       };
       spStatus = { ok: true, checked: new Date().toISOString() };
       const cmp = o => JSON.stringify(Object.assign({}, o, { progress: 0, at: 0 }));
@@ -304,14 +306,67 @@ export function createIntegrations(ctx) {
       if (cmp(next) !== cmp(spState) || Date.now() - (spState.at || 0) > 30000) { spState = next; commit({ music: next }, 'server'); }
     } catch (e) { spStatus = { ok: false, error: e.message, checked: new Date().toISOString() }; if (e.status !== 429) log('spotify:', e.message); }
   }
-  let spTimer = null;
-  function startSpotify() { if (!SP().refreshToken) return; refreshSpotify(); clearInterval(spTimer); spTimer = setInterval(refreshSpotify, 5000); }
+  // Speakers = Spotify Connect devices + every Sonos room found on the network (Spotify only lists
+  // a Sonos while it's already playing, and won't let apps start music on it).
+  function speakerList(current) {
+    const sonosRooms = [...new Set(sonos.rooms().map(r => r.name))];
+    const isSonos = name => sonosRooms.some(n => String(name).toLowerCase().replace(/\s*sonos\s*/g, ' ').trim() === n.toLowerCase());
+    const curName = current && current.name;
+    const list = devices.filter(d => !(d.is_restricted && isSonos(d.name)))
+      .map(d => ({ id: d.id, name: d.name, type: d.type, active: d.is_active, volume: d.volume_percent, restricted: d.is_restricted }));
+    const t = secrets.musicTarget;
+    sonosRooms.forEach(n => list.push({ id: 'sonos:' + n, name: n, type: 'Sonos', sonos: true,
+      active: !!(curName && isSonos(curName) && curName.toLowerCase().includes(n.toLowerCase())) || !!(t && t.id === 'sonos:' + n && !(current && current.id && !current.is_restricted && !isSonos(curName))) }));
+    return list;
+  }
+  let spTimer = null, sonosTimer = null;
+  function startSpotify() {
+    if (!SP().refreshToken) return;
+    sonos.scan().then(refreshSpotify);
+    clearInterval(spTimer); spTimer = setInterval(refreshSpotify, 5000);
+    clearInterval(sonosTimer); sonosTimer = setInterval(() => sonos.scan(), 10 * 60000);
+  }
+  async function sonosRoomFor() {
+    const cur = spState.device, t = secrets.musicTarget;
+    if (cur && cur.restricted) return sonos.find(cur.name);
+    // Chosen Sonos as the speaker, and Spotify isn't actively playing somewhere else
+    if (t && t.sonos && !(cur && cur.id && spState.playing)) return sonos.find(t.name);
+    return null;
+  }
   async function spotifyCommand(b) {
     // Spotify refuses remote control of "restricted" speakers (Sonos). Talk to the Sonos directly.
     const cur = spState.device;
-    if (cur && cur.restricted && !b.uri && ['play', 'pause', 'next', 'prev', 'volume'].includes(b.action)) {
-      const room = await sonos.find(cur.name);
-      if (!room) throw new Error(cur.name + ' can only be controlled from the Sonos or Spotify app (it wasn’t found on the home network)');
+    // Pick a speaker
+    if (b.action === 'transfer') {
+      if (String(b.device).startsWith('sonos:')) {
+        const name = b.device.slice(6), room = await sonos.find(name);
+        if (!room) throw new Error(name + ' isn’t answering on the network');
+        secrets.musicTarget = { id: b.device, name, sonos: true }; saveSecrets();
+        // Bring whatever is playing on Spotify over to the Sonos
+        if (spState.playing && cur && cur.id && !cur.restricted && (spState.context || spState.uri)) {
+          await sonos.playSpotify(room, /:(album|playlist):/.test(spState.context) ? spState.context : [spState.uri], 0);
+          await sp('PUT', '/me/player/pause').catch(() => {});
+        }
+        setTimeout(refreshSpotify, 1200);
+        return { ok: true, via: 'sonos' };
+      }
+      secrets.musicTarget = { id: b.device, name: b.name || '', sonos: false }; saveSecrets();
+      const room = cur && cur.restricted ? await sonos.find(cur.name) : null;
+      if (room) await sonos.command(room, 'pause').catch(() => {});
+    }
+    // Start something on a Sonos
+    if (b.action === 'play' && (b.uri || b.uris)) {
+      const room = await sonosRoomFor();
+      if (room) {
+        const r = await sonos.playSpotify(room, b.uris || b.uri, +b.offset || 0);
+        if (cur && cur.id && !cur.restricted && spState.playing) await sp('PUT', '/me/player/pause').catch(() => {});
+        setTimeout(refreshSpotify, 1500);
+        return Object.assign({ via: 'sonos' }, r);
+      }
+    }
+    if (!b.uri && !b.uris && ['play', 'pause', 'next', 'prev', 'volume'].includes(b.action) && (cur && cur.restricted || (!cur || !cur.id) && secrets.musicTarget && secrets.musicTarget.sonos)) {
+      const room = await sonosRoomFor();
+      if (!room) throw new Error((cur ? cur.name : 'That speaker') + ' isn’t answering on the network');
       await sonos.command(room, b.action, b.volume);
       if (b.action === 'play' || b.action === 'pause') { spState = Object.assign({}, spState, { playing: b.action === 'play', at: Date.now() }); commit({ music: spState }, 'server'); }
       setTimeout(refreshSpotify, 900);
@@ -319,13 +374,22 @@ export function createIntegrations(ctx) {
     }
     const dev = b.device ? '?device_id=' + encodeURIComponent(b.device) : '';
     switch (b.action) {
-      case 'play': await sp('PUT', '/me/player/play' + dev, b.uri ? (/:track:/.test(b.uri) ? { uris: [b.uri] } : { context_uri: b.uri }) : undefined); break;
+      case 'play': {
+        let body;
+        if (b.uris) body = { uris: b.uris.slice(0, 100), offset: { position: +b.offset || 0 } };
+        else if (b.uri && /:track:/.test(b.uri)) body = { uris: [b.uri] };
+        else if (b.uri) body = Object.assign({ context_uri: b.uri }, b.offset != null && !/:artist:/.test(b.uri) ? { offset: { position: +b.offset } } : {});
+        const t = secrets.musicTarget;
+        const devq = dev || (body && (!cur || !cur.id) && t && !t.sonos ? '?device_id=' + encodeURIComponent(t.id) : '');
+        await sp('PUT', '/me/player/play' + devq, body);
+        break;
+      }
       case 'pause': await sp('PUT', '/me/player/pause'); break;
       case 'next': await sp('POST', '/me/player/next'); break;
       case 'prev': await sp('POST', '/me/player/previous'); break;
       case 'volume': await sp('PUT', '/me/player/volume?volume_percent=' + Math.max(0, Math.min(100, Math.round(+b.volume)))); break;
       case 'shuffle': await sp('PUT', '/me/player/shuffle?state=' + (b.on ? 'true' : 'false')); break;
-      case 'transfer': await sp('PUT', '/me/player', { device_ids: [b.device], play: b.play !== false }); devicesAt = 0; break;
+      case 'transfer': await sp('PUT', '/me/player', { device_ids: [b.device], play: !!spState.playing || b.play === true }); devicesAt = 0; break;
       default: throw new Error('Unknown music action');
     }
     setTimeout(refreshSpotify, 400);
@@ -341,12 +405,38 @@ export function createIntegrations(ctx) {
       if (c && (c.type === 'playlist' || c.type === 'album') && !seen.has(c.uri)) { seen.add(c.uri); recents.push(c.uri); }
     }
     const data = {
-      playlists: ((pl && pl.items) || []).filter(Boolean).map(p => ({ uri: p.uri, name: p.name, by: p.owner && p.owner.display_name, art: img(p.images, 300), tracks: p.tracks && p.tracks.total })),
+      playlists: [{ uri: 'liked', name: 'Liked Songs', by: 'Your library', art: '', liked: true }].concat(((pl && pl.items) || []).filter(Boolean).map(p => ({ uri: p.uri, name: p.name, by: p.owner && p.owner.display_name, art: img(p.images, 300), tracks: p.tracks && p.tracks.total }))),
       recentTracks: ((recent && recent.items) || []).slice(0, 12).map(r => ({ uri: r.track.uri, name: r.track.name, by: r.track.artists.map(a => a.name).join(', '), art: img(r.track.album.images, 120) }))
         .filter((t, i, a) => a.findIndex(x => x.uri === t.uri) === i).slice(0, 8)
     };
     libCache = { at: Date.now(), data };
     return data;
+  }
+  // Open an album / playlist / artist / Liked Songs to see its tracks
+  async function spotifyItems(uri) {
+    const t = x => ({ uri: x.uri, name: x.name, by: (x.artists || []).map(a => a.name).join(', '), ms: x.duration_ms, art: x.album ? img(x.album.images, 120) : '' });
+    if (uri === 'liked') {
+      const r = await sp('GET', '/me/tracks?limit=50');
+      const tracks = ((r && r.items) || []).map(i => i.track).filter(Boolean).map(t);
+      return { kind: 'liked', name: 'Liked Songs', by: tracks.length + ' recent songs', art: '', tracks, playAs: 'uris' };
+    }
+    const [, kind, id] = String(uri).match(/^spotify:(playlist|album|artist):([A-Za-z0-9]+)$/) || [];
+    if (!kind) throw new Error('Can’t open that');
+    if (kind === 'album') {
+      const a = await sp('GET', '/albums/' + id);
+      const art = img(a.images, 300);
+      return { kind, uri, name: a.name, by: a.artists.map(x => x.name).join(', ') + ' · ' + String(a.release_date || '').slice(0, 4), art,
+        tracks: a.tracks.items.map(x => Object.assign(t(x), { art: '' })), playAs: 'context' };
+    }
+    if (kind === 'playlist') {
+      const p = await sp('GET', '/playlists/' + id + '?fields=' + encodeURIComponent('name,owner(display_name),images,tracks(total,items(track(uri,name,duration_ms,artists(name),album(images))))'));
+      return { kind, uri, name: p.name, by: (p.owner && p.owner.display_name || '') + ' · ' + (p.tracks ? p.tracks.total : 0) + ' songs', art: img(p.images, 300),
+        tracks: ((p.tracks && p.tracks.items) || []).map(i => i.track).filter(x => x && x.uri && /:track:/.test(x.uri)).map(t), playAs: 'context' };
+    }
+    const [a, top, albums] = await Promise.all([sp('GET', '/artists/' + id), sp('GET', '/artists/' + id + '/top-tracks?market=from_token').catch(() => null),
+      sp('GET', '/artists/' + id + '/albums?include_groups=album,single&limit=12').catch(() => null)]);
+    return { kind, uri, name: a.name, by: 'Artist', art: img(a.images, 300), tracks: ((top && top.tracks) || []).map(t), playAs: 'uris',
+      albums: ((albums && albums.items) || []).map(x => ({ uri: x.uri, name: x.name, by: String(x.release_date || '').slice(0, 4), art: img(x.images, 300) })) };
   }
   async function spotifySearch(q) {
     const r = await sp('GET', '/search?type=track,playlist,album,artist&limit=6&q=' + encodeURIComponent(q));
@@ -370,7 +460,7 @@ export function createIntegrations(ctx) {
 
   return {
     start, geocode, routeBoth, refreshCommute, refreshBart, syncAlbum, albumStatus: () => albumStatus, albumToken, resolveAlbumLink,
-    sonos, spotifyAuthUrl, spotifyCallback, spotifyCommand, spotifyLibrary, spotifySearch, spotifyStatus: () => spStatus,
+    sonos, spotifyAuthUrl, spotifyCallback, spotifyCommand, spotifyLibrary, spotifySearch, spotifyItems, spotifyStatus: () => spStatus,
     spotifyDisconnect() { secrets.spotify = { clientId: SP().clientId, clientSecret: SP().clientSecret }; saveSecrets(); clearInterval(spTimer); spState = { connected: false }; commit({ music: { connected: false } }, 'server'); },
     BART_STATIONS
   };

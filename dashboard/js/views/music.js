@@ -44,17 +44,53 @@
       (dev && dev.volume != null ? '<label class="mu-vol">' + App.icon('speaker', 20) + '<input type="range" min="0" max="100" step="2" value="' + dev.volume + '" data-vol></label>' : '');
   }
   function tile(x) {
-    return '<button class="mu-tile" data-uri="' + App.esc(x.uri) + '">' +
-      (x.art ? '<img src="' + App.esc(x.art) + '" alt="" loading="lazy">' : '<span class="mu-tile-ph">' + App.icon('music', 30) + '</span>') +
+    return '<button class="mu-tile" data-open="' + App.esc(x.uri) + '">' +
+      (x.art ? '<img src="' + App.esc(x.art) + '" alt="" loading="lazy">' : '<span class="mu-tile-ph' + (x.liked ? ' mu-tile-ph--liked' : '') + '">' + App.icon(x.liked ? 'heart' : 'music', 30) + '</span>') +
       '<b>' + App.esc(x.name) + '</b><small>' + App.esc(x.by || '') + '</small></button>';
   }
   function row(x) {
     return '<button class="mu-row" data-uri="' + App.esc(x.uri) + '">' + (x.art ? '<img src="' + App.esc(x.art) + '" alt="">' : '<span></span>') +
       '<span><b>' + App.esc(x.name) + '</b><small>' + App.esc(x.by || '') + '</small></span>' + App.icon('play', 22) + '</button>';
   }
+  function fmtMs(ms) { var s = Math.round((ms || 0) / 1000); return Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); }
+  function detail() {
+    var X = V.detail;
+    if (X.loading) return '<button class="mu-back" data-back>' + App.icon('left', 22) + ' Back</button><p class="mu-note">Opening…</p>';
+    if (X.error) return '<button class="mu-back" data-back>' + App.icon('left', 22) + ' Back</button><p class="mu-note">' + App.esc(X.error) + '</p>';
+    var nowUri = (D.music || {}).uri;
+    return '<button class="mu-back" data-back>' + App.icon('left', 22) + ' Back</button>' +
+      '<div class="mu-hero">' + (X.art ? '<img src="' + App.esc(X.art) + '" alt="">' : '<span class="mu-tile-ph mu-tile-ph--liked">' + App.icon(X.kind === 'liked' ? 'heart' : 'music', 40) + '</span>') +
+      '<div><span class="label">' + App.esc({ playlist: 'Playlist', album: 'Album', artist: 'Artist', liked: 'Your library' }[X.kind] || '') + '</span>' +
+      '<h2 class="serif">' + App.esc(X.name) + '</h2><small>' + App.esc(X.by || '') + '</small>' +
+      (X.tracks.length ? '<button class="mu-playall" data-ti="0">' + App.icon('play', 22) + ' Play' + (X.kind === 'artist' ? ' top songs' : '') + '</button>' : '') + '</div></div>' +
+      (X.tracks.length ? '<div class="mu-tracks">' + X.tracks.map(function (t, i) {
+        return '<button class="mu-track' + (t.uri === nowUri ? ' is-now' : '') + '" data-ti="' + i + '"><span class="num">' + (i + 1) + '</span>' +
+          '<span><b>' + App.esc(t.name) + '</b><small>' + App.esc(t.by) + '</small></span><em class="num">' + fmtMs(t.ms) + '</em></button>';
+      }).join('') + '</div>' : '<p class="mu-note">No songs here.</p>') +
+      (X.albums && X.albums.length ? '<div class="label">Albums</div><div class="mu-tiles">' + X.albums.map(tile).join('') + '</div>' : '');
+  }
+  function openItem(uri) {
+    V.stack = V.stack || [];
+    if (V.detail && !V.detail.loading) V.stack.push(V.detail);
+    V.detail = { loading: true, uri: uri };
+    paintBrowse();
+    V.el.querySelector('.mu-browse').scrollTop = 0;
+    get('/api/music/items?uri=' + encodeURIComponent(uri)).then(function (j) { if (V.detail && V.detail.uri === uri) { V.detail = j; V.detail.uri = uri; paintBrowse(); } })
+      .catch(function (e) { if (V.detail && V.detail.uri === uri) { V.detail = { error: e.message, uri: uri }; paintBrowse(); } });
+  }
+  function hasSpeaker() { var M = D.music || {}; return !!(M.device || M.target); }
+  function playFrom(i) {
+    var X = V.detail;
+    if (!hasSpeaker()) return openSpeakers();
+    var t = X.tracks[i];
+    App.toast('Playing <b>' + App.esc(t ? t.name : X.name) + '</b>', { icon: 'music', ms: 2200 });
+    if (X.playAs === 'context') App.musicCmd('play', { uri: X.uri, offset: i });
+    else App.musicCmd('play', { uris: X.tracks.map(function (x) { return x.uri; }), offset: i });
+  }
   function browse() {
     var M = D.music || {};
     if (!M.connected) return '';
+    if (V.detail) return detail();
     var R = V.results;
     if (R) {
       var all = (R.tracks || []).length + (R.playlists || []).length + (R.albums || []).length + (R.artists || []).length;
@@ -88,13 +124,13 @@
   function openSpeakers() {
     var M = D.music || {};
     var list = M.devices || [];
-    App.sheet('<div class="sheet-pad"><div class="label">Spotify Connect</div><h2 class="serif sheet-h">Play on…</h2>' +
+    App.sheet('<div class="sheet-pad"><div class="label">Speakers</div><h2 class="serif sheet-h">Play on…</h2>' +
       (list.length ? '<div class="mu-devs">' + list.map(function (d) {
         return '<button class="mu-devrow' + (d.active ? ' is-on' : '') + '" data-dev="' + App.esc(d.id) + '"' + (d.restricted ? ' disabled' : '') + '>' +
-          App.icon('speaker', 28) + '<span><b>' + App.esc(d.name) + '</b><small>' + App.esc(d.type) + (d.active ? ' · playing' : '') + '</small></span></button>';
+          App.icon('speaker', 28) + '<span><b>' + App.esc(d.name) + '</b><small>' + App.esc(d.sonos ? 'Sonos' : d.type) + (d.active ? ' · selected' : '') + '</small></span></button>';
       }).join('') + '</div>' :
-        '<p class="sheet-p">No speakers found. Open Spotify on a speaker, phone or the Mac mini so it shows up, then try again.</p>') +
-      '<p class="mu-note">Speakers appear here when Spotify can see them: Sonos, Echo, Google, smart TVs, and any phone or computer with Spotify open.</p></div>', {
+        '<p class="sheet-p">No speakers found. Open Spotify on a phone or computer, or check the Sonos is on.</p>') +
+      '<p class="mu-note">Sonos speakers on your Wi-Fi always show here. Phones and computers show up while Spotify is open on them.</p></div>', {
       cls: 'sheet--wide',
       onMount: function (s, close) {
         s.addEventListener('click', function (e) {
@@ -102,7 +138,7 @@
           if (!b) return;
           close();
           App.toast('Moving music to <b>' + App.esc(b.querySelector('b').textContent) + '</b>', { icon: 'speaker', ms: 2500 });
-          App.musicCmd('transfer', { device: b.dataset.dev });
+          App.musicCmd('transfer', { device: b.dataset.dev, name: b.querySelector('b').textContent });
         });
       }
     });
@@ -129,14 +165,15 @@
             return App.musicCmd(a);
           }
           if (e.target.closest('[data-speakers]')) return openSpeakers();
+          if ((t = e.target.closest('[data-open]'))) return openItem(t.dataset.open);
+          if (e.target.closest('[data-back]')) { V.detail = (V.stack || []).pop() || null; return paintBrowse(); }
+          if ((t = e.target.closest('[data-ti]'))) return playFrom(+t.dataset.ti);
           if ((t = e.target.closest('[data-uri]'))) {
-            var M = D.music || {};
-            var dev = M.device ? null : ((M.devices || []).filter(function (d) { return !d.restricted; })[0] || null);
-            if (!M.device && !dev) return openSpeakers();
+            if (!hasSpeaker()) return openSpeakers();
             App.toast('Playing <b>' + App.esc(t.querySelector('b').textContent) + '</b>', { icon: 'music', ms: 2200 });
-            return App.musicCmd('play', { uri: t.dataset.uri, device: dev ? dev.id : undefined });
+            return App.musicCmd('play', { uris: [t.dataset.uri] });
           }
-          if (e.target.closest('[data-clear]')) { var i = el.querySelector('.mu-search input'); i.value = ''; V.q = ''; V.results = null; paintBrowse(); }
+          if (e.target.closest('[data-clear]')) { var i = el.querySelector('.mu-search input'); i.value = ''; V.q = ''; V.results = null; V.detail = null; V.stack = []; paintBrowse(); }
         });
         var input = el.querySelector('.mu-search input');
         input.addEventListener('input', function () {
@@ -144,6 +181,7 @@
           var q = input.value.trim();
           searchTimer = setTimeout(function () {
             V.q = q;
+            V.detail = null; V.stack = [];
             if (!q) { V.results = null; paintBrowse(); return; }
             get('/api/music/search?q=' + encodeURIComponent(q)).then(function (j) { if (V.q === q) { V.results = j; paintBrowse(); } })
               .catch(function (e) { App.toast(App.esc(e.message), { tone: 'error', icon: 'music' }); });

@@ -53,3 +53,22 @@
 .mu-devrow.is-on { background: var(--ink); color: var(--paper); }
 .mu-devrow.is-on small { color: rgba(255, 255, 255, .7); }
 .mu-devrow[disabled] { opacity: .45; }
+
+/* Album / playlist / artist page */
+.mu-back { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px 0 8px; border-radius: 999px; background: var(--card); font-size: 16px; font-weight: 700; align-self: flex-start; }
+.mu-hero { display: flex; align-items: flex-end; gap: 18px; }
+.mu-hero img, .mu-hero .mu-tile-ph { width: 150px; height: 150px; border-radius: 14px; object-fit: cover; flex: none; }
+.mu-hero > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.mu-hero h2 { font-size: 40px; line-height: 1; margin: 0; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.mu-hero small { font-size: 16px; color: var(--mute); }
+.mu-playall { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; margin-top: 8px; min-height: 52px; padding: 0 24px 0 18px; border-radius: 999px; background: var(--ink); color: var(--paper); font-size: 18px; font-weight: 800; }
+.mu-tracks { display: flex; flex-direction: column; }
+.mu-track { display: flex; align-items: center; gap: 14px; min-height: 58px; padding: 4px 12px; border-radius: 10px; text-align: left; }
+.mu-track:active { background: var(--paper-2); }
+.mu-track > .num { width: 26px; text-align: right; color: var(--mute); font-size: 16px; flex: none; }
+.mu-track > span:nth-child(2) { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.mu-track b { font-size: 18px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mu-track small { font-size: 14px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mu-track em { font-style: normal; color: var(--mute); font-size: 15px; }
+.mu-track.is-now b, .mu-track.is-now > .num { color: var(--ok); }
+.mu-tile-ph--liked { background: linear-gradient(135deg, #4B2BD6, #8FB3F5) !important; color: #fff !important; }

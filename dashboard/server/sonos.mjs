@@ -5,9 +5,11 @@ import dgram from 'node:dgram';
 const SOAP = {
   transport: { path: '/MediaRenderer/AVTransport/Control', urn: 'urn:schemas-upnp-org:service:AVTransport:1' },
   rendering: { path: '/MediaRenderer/RenderingControl/Control', urn: 'urn:schemas-upnp-org:service:RenderingControl:1' },
-  topology: { path: '/ZoneGroupTopology/Control', urn: 'urn:schemas-upnp-org:service:ZoneGroupTopology:1' }
+  topology: { path: '/ZoneGroupTopology/Control', urn: 'urn:schemas-upnp-org:service:ZoneGroupTopology:1' },
+  content: { path: '/MediaServer/ContentDirectory/Control', urn: 'urn:schemas-upnp-org:service:ContentDirectory:1' }
 };
 
+function escapeXml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function unescapeXml(s) { return String(s).replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&'); }
 
 async function soap(host, svc, action, args) {
@@ -93,5 +95,62 @@ export function createSonos({ log }) {
     }
   }
 
-  return { scan, find, command, status: () => status, rooms: () => rooms };
+  // ---------------------------------------------------------------- play Spotify on a Sonos room
+  // Sonos plays Spotify itself (through the Spotify account linked in the Sonos app). We need that
+  // account's numbers (sid/sn) and region descriptor, which we read from a Sonos favourite or from
+  // whatever Spotify track the room last played.
+  let account = null;
+  async function spotifyAccount(room) {
+    if (account) return account;
+    const found = [];
+    try {
+      const fav = unescapeXml(unescapeXml(await soap(room.coordinatorHost, 'content', 'Browse', { ObjectID: 'FV:2', BrowseFlag: 'BrowseDirectChildren', Filter: '*', StartingIndex: 0, RequestedCount: 100, SortCriteria: '' })));
+      found.push(fav);
+    } catch {}
+    try { found.push(unescapeXml(unescapeXml(await soap(room.coordinatorHost, 'transport', 'GetPositionInfo', { InstanceID: 0 })))); } catch {}
+    try { found.push(unescapeXml(unescapeXml(await soap(room.coordinatorHost, 'transport', 'GetMediaInfo', { InstanceID: 0 })))); } catch {}
+    const all = found.join('\n');
+    // Prefer entries that are clearly Spotify (spotify%3a… in the URI)
+    const m = all.match(/spotify%3a[^"<\s]*?\?sid=(\d+)[^"<\s]*?sn=(\d+)/i) || all.match(/x-sonos-spotify:[^"<\s]*?sid=(\d+)[^"<\s]*?sn=(\d+)/i);
+    const d = all.match(/(SA_RINCON\d+_X_#Svc\d+-[0-9a-f]+-Token)/i);
+    if (m) account = { sid: m[1], sn: m[2], desc: d ? d[1] : 'SA_RINCON3079_X_#Svc3079-0-Token' };
+    return account || { sid: '12', sn: '1', desc: 'SA_RINCON3079_X_#Svc3079-0-Token', guessed: true };
+  }
+  function didl(id, cls, desc) {
+    return '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">' +
+      '<item id="' + id + '" restricted="true"><dc:title></dc:title><upnp:class>' + cls + '</upnp:class>' +
+      '<desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">' + desc + '</desc></item></DIDL-Lite>';
+  }
+  function enqueueArgs(uri, acc) {
+    const enc = encodeURIComponent(uri);
+    if (/:track:/.test(uri)) return { u: 'x-sonos-spotify:' + enc + '?sid=' + acc.sid + '&flags=8224&sn=' + acc.sn, m: didl('00032020' + enc, 'object.item.audioItem.musicTrack', acc.desc) };
+    if (/:album:/.test(uri)) return { u: 'x-rincon-cpcontainer:1004206c' + enc + '?sid=' + acc.sid + '&flags=8300&sn=' + acc.sn, m: didl('1004206c' + enc, 'object.container.album.musicAlbum', acc.desc) };
+    if (/:playlist:/.test(uri)) return { u: 'x-rincon-cpcontainer:1006206c' + enc + '?sid=' + acc.sid + '&flags=8300&sn=' + acc.sn, m: didl('1006206c' + enc, 'object.container.playlistContainer', acc.desc) };
+    throw new Error('Sonos can’t play that kind of item');
+  }
+  // items: a context URI (album/playlist) or a list of track URIs; startAt: 0-based track index
+  async function playSpotify(room, items, startAt) {
+    const acc = await spotifyAccount(room);
+    const h = room.coordinatorHost;
+    const coord = rooms.find(r => r.host === h) || room;
+    const list = Array.isArray(items) ? items : [items];
+    await soap(h, 'transport', 'RemoveAllTracksFromQueue', { InstanceID: 0 });
+    for (const uri of list.slice(0, 50)) {
+      const a = enqueueArgs(uri, acc);
+      await soap(h, 'transport', 'AddURIToQueue', { InstanceID: 0, EnqueuedURI: escapeXml(a.u), EnqueuedURIMetaData: escapeXml(a.m), DesiredFirstTrackNumberEnqueued: 0, EnqueueAsNext: 0 });
+    }
+    await soap(h, 'transport', 'SetAVTransportURI', { InstanceID: 0, CurrentURI: 'x-rincon-queue:' + coord.uuid + '#0', CurrentURIMetaData: '' });
+    if (startAt > 0) { try { await soap(h, 'transport', 'Seek', { InstanceID: 0, Unit: 'TRACK_NR', Target: startAt + 1 }); } catch {} }
+    await soap(h, 'transport', 'Play', { InstanceID: 0, Speed: 1 });
+    return { ok: true, account: acc.guessed ? 'guessed' : 'found' };
+  }
+  async function debug() {
+    await scan();
+    const out = { status, rooms: rooms.map(r => ({ name: r.name, coordinator: r.coordinatorName, group: r.groupNames })) };
+    const r = rooms[0];
+    if (r) { account = null; out.account = await spotifyAccount(r); }
+    return out;
+  }
+
+  return { scan, find, command, playSpotify, debug, status: () => status, rooms: () => rooms };
 }
