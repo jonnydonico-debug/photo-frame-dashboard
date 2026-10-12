@@ -92,16 +92,19 @@ export function createIntegrations(ctx) {
     const m = s.match(/#([A-Za-z0-9]{10,})/) || s.match(/sharedalbum\/(?:#)?([AB][A-Za-z0-9]{10,})/);
     return m ? m[1] : null;
   }
-  // Newer share links (photos.icloud.com, share.icloud.com, apple.co) don't show the album token, so
+  // New-style links (2025+): https://photos.icloud.com/shared/album/<key> — a CloudKit share.
+  function ckKey(link) { const m = String(link || '').match(/photos\.icloud\.com\/shared\/album\/([A-Za-z0-9_-]{10,})/); return m ? m[1] : null; }
+  // Other share links (share.icloud.com, apple.co) don't show the album token, so
   // follow the link the way a browser would and pick the token out of where it lands.
   async function resolveAlbumLink(link) {
     let url = String(link || '').trim();
+    if (ckKey(url)) return 'ck:' + ckKey(url);
     if (albumToken(url)) return albumToken(url);
     if (!/^https:\/\/[^/]*(icloud\.com|apple\.co)\b/i.test(url)) return null;
     for (let i = 0; i < 6; i++) {
       const r = await fetch(url, { redirect: 'manual', headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15' }, signal: AbortSignal.timeout(15000) });
       const loc = r.headers.get('location');
-      if (loc) { url = new URL(loc, url).toString(); if (albumToken(url)) return albumToken(url); continue; }
+      if (loc) { url = new URL(loc, url).toString(); if (ckKey(url)) return 'ck:' + ckKey(url); if (albumToken(url)) return albumToken(url); continue; }
       const html = await r.text();
       const m = html.match(/sharedalbum\/#([A-Za-z0-9]{10,})/) || html.match(/["'#](B[0-9A-Za-z]{14})["']/);
       return m ? m[1] : null;
@@ -121,6 +124,45 @@ export function createIntegrations(ctx) {
     if (!r.ok) throw new Error('iCloud returned ' + r.status + (r.status === 404 ? ' (is Public Website turned on?)' : ''));
     return { json: await r.json(), base };
   }
+  const CK_HEADERS = { 'Content-Type': 'text/plain', 'User-Agent': UA, Origin: 'https://photos.icloud.com', Referer: 'https://photos.icloud.com/' };
+  async function ckAlbum(key) {
+    const res = (await j('https://ckdatabasews.icloud.com/database/1/com.apple.photos.cloud/production/public/records/resolve?remapEnums=true&getCurrentSyncToken=true&sharing_url_key=' + key,
+      { method: 'POST', headers: CK_HEADERS, body: JSON.stringify({ shortGUIDs: [{ value: key }] }), timeout: 20000 })).results[0];
+    if (!res || !res.anonymousPublicAccess) throw new Error('This album isn’t shared publicly (turn on Public Link / “Anyone with the link”)');
+    const ap = res.anonymousPublicAccess;
+    const title = res.share && res.share.fields && res.share.fields['cloudkit.title'] ? res.share.fields['cloudkit.title'].value : 'Shared album';
+    const q = ap.databasePartition.replace(/:443$/, '') + '/database/1/com.apple.photos.cloud/production/shared/records/query?remapEnums=true&getCurrentSyncToken=true&sharing_url_key=' + key + '&publicAccessAuthToken=' + encodeURIComponent(ap.token);
+    const masters = {}, assets = [];
+    for (let rank = 0, page = 0; page < 50; page++) {
+      const r = await j(q, { method: 'POST', headers: CK_HEADERS, timeout: 30000, body: JSON.stringify({
+        query: { recordType: 'CPLAssetAndMasterByAddedDate', filterBy: [
+          { fieldName: 'direction', comparator: 'EQUALS', fieldValue: { type: 'STRING', value: 'DESCENDING' } },
+          { fieldName: 'startRank', comparator: 'EQUALS', fieldValue: { type: 'INT64', value: rank } }] },
+        zoneID: res.zoneID, resultsLimit: 200 }) });
+      const recs = r.records || [];
+      let n = 0;
+      for (const x of recs) {
+        if (x.recordType === 'CPLMaster') masters[x.recordName] = x.fields;
+        if (x.recordType === 'CPLAsset') { assets.push(x.fields); n++; }
+      }
+      if (!n) break;
+      rank += n;
+      if (assets.length >= 1000) break;
+    }
+    const items = [];
+    for (const a of assets) {
+      const ref = a.masterRef && a.masterRef.value && a.masterRef.value.recordName, m = masters[ref];
+      if (!m || !m.resJPEGMedRes) continue;
+      const type = m.itemType ? m.itemType.value : '';
+      if (/movie|mpeg|video/i.test(type)) continue;
+      let w = m.resJPEGMedWidth ? m.resJPEGMedWidth.value : 0, h = m.resJPEGMedHeight ? m.resJPEGMedHeight.value : 0;
+      const o = a.orientation ? a.orientation.value : 1;
+      if (o >= 5 && o <= 8) { const t = w; w = h; h = t; }
+      items.push({ id: ref.replace(/[^A-Za-z0-9]/g, ''), url: m.resJPEGMedRes.value.downloadURL.replace('${f}', 'photo.jpg'), w, h,
+        date: new Date((a.assetDate && a.assetDate.value) || (m.originalCreationDate && m.originalCreationDate.value) || Date.now()) });
+    }
+    return { title, items };
+  }
   let albumStatus = { ok: false, note: 'Not set up' }, albumBusy = false;
   async function syncAlbum() {
     const token = secrets.icloudAlbumToken || albumToken(secrets.icloudAlbum);
@@ -129,6 +171,28 @@ export function createIntegrations(ctx) {
     const dir = path.join(photosDir, 'icloud');
     fs.mkdirSync(dir, { recursive: true });
     try {
+      if (token.startsWith('ck:')) {
+        const album = await ckAlbum(token.slice(3));
+        const have = new Set(fs.readdirSync(dir));
+        for (const it of album.items) {
+          if (have.has(it.id + '.jpg')) continue;
+          const r = await fetch(it.url, { signal: AbortSignal.timeout(30000) });
+          if (r.ok) await fsp.writeFile(path.join(dir, it.id + '.jpg'), Buffer.from(await r.arrayBuffer()));
+        }
+        const keep = new Set(album.items.map(x => x.id + '.jpg'));
+        for (const f of fs.readdirSync(dir)) if (!keep.has(f)) fs.rmSync(path.join(dir, f), { force: true });
+        const own = (S().photos || []).filter(x => x.src && !x.icloud);
+        const old = Object.fromEntries((S().photos || []).filter(x => x.icloud).map(x => [x.id, x]));
+        const list = album.items.filter(x => fs.existsSync(path.join(dir, x.id + '.jpg'))).map(x => {
+          const id = 'ic-' + x.id;
+          return { id, icloud: true, src: '/photos/icloud/' + x.id + '.jpg', o: x.h > x.w ? 'p' : 'l', date: x.date.toISOString().slice(0, 10),
+            place: '', from: 'family', tag: x.date.toISOString().slice(0, 10), fav: !!(old[id] && old[id].fav) };
+        });
+        commit({ photos: own.concat(list) }, 'server');
+        albumStatus = { ok: true, name: album.title, count: list.length, checked: new Date().toISOString() };
+        albumBusy = false;
+        return albumStatus;
+      }
       const first = await icloudPost(albumBase(token), 'webstream', { streamCtag: null }, token);
       const stream = first.json, base = first.base;
       const items = (stream.photos || []).filter(p => p.mediaAssetType !== 'video');
