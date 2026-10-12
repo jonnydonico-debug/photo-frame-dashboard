@@ -408,14 +408,16 @@ export function createIntegrations(ctx) {
   let libCache = { at: 0, data: null };
   async function spotifyLibrary() {
     if (libCache.data && Date.now() - libCache.at < 10 * 60000) return libCache.data;
-    const [pl, recent] = await Promise.all([sp('GET', '/me/playlists?limit=24'), sp('GET', '/me/player/recently-played?limit=30').catch(() => null)]);
+    const [me, pl, recent] = await Promise.all([sp('GET', '/me'), sp('GET', '/me/playlists?limit=50'), sp('GET', '/me/player/recently-played?limit=30').catch(() => null)]);
+    // Only playlists you made (or collaborate on): Spotify won't share the songs in anyone else's.
+    const mine = ((pl && pl.items) || []).filter(p => p && (p.collaborative || (p.owner && me && p.owner.id === me.id)));
     const seen = new Set(), recents = [];
     for (const r of (recent && recent.items) || []) {
       const c = r.context;
       if (c && (c.type === 'playlist' || c.type === 'album') && !seen.has(c.uri)) { seen.add(c.uri); recents.push(c.uri); }
     }
     const data = {
-      playlists: [{ uri: 'liked', name: 'Liked Songs', by: 'Your library', art: '', liked: true }].concat(((pl && pl.items) || []).filter(Boolean).map(p => ({ uri: p.uri, name: p.name, by: p.owner && p.owner.display_name, art: img(p.images, 300), tracks: p.tracks && p.tracks.total }))),
+      playlists: [{ uri: 'liked', name: 'Liked Songs', by: 'Your library', art: '', liked: true }].concat(mine.map(p => ({ uri: p.uri, name: p.name, by: p.owner && p.owner.display_name, art: img(p.images, 300), tracks: p.tracks && p.tracks.total }))),
       recentTracks: ((recent && recent.items) || []).slice(0, 12).map(r => ({ uri: r.track.uri, name: r.track.name, by: r.track.artists.map(a => a.name).join(', '), art: img(r.track.album.images, 120) }))
         .filter((t, i, a) => a.findIndex(x => x.uri === t.uri) === i).slice(0, 8)
     };

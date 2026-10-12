@@ -94,10 +94,10 @@
     if (V.detail) return detail();
     var R = V.results;
     if (R) {
-      var all = (R.tracks || []).length + (R.playlists || []).length + (R.albums || []).length + (R.artists || []).length;
+      var all = (R.tracks || []).length + (R.albums || []).length + (R.artists || []).length;
       if (!all) return '<p class="mu-note">No results for “' + App.esc(V.q) + '”.</p>';
       return (R.tracks.length ? '<div class="label">Songs</div><div class="mu-rows">' + R.tracks.slice(0, 4).map(row).join('') + '</div>' : '') +
-        '<div class="label">Playlists, albums + artists</div><div class="mu-tiles">' + R.playlists.slice(0, 3).concat(R.albums.slice(0, 3), R.artists.slice(0, 2)).map(tile).join('') + '</div>';
+        '<div class="label">Albums + artists</div><div class="mu-tiles">' + R.albums.slice(0, 5).concat(R.artists.slice(0, 3)).map(tile).join('') + '</div>';
     }
     if (!V.lib) return '<p class="mu-note">Loading your playlists…</p>';
     if (V.lib.error) return '<p class="mu-note">' + App.esc(V.lib.error) + '</p>';
