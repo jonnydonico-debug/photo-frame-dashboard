@@ -9,7 +9,7 @@ screen the moment anything changes, whether the change comes from the frame, you
 bash ~/Documents/HomeHQ-installer/install.sh
 ```
 
-It installs Node.js with Homebrew if needed, copies the app to `~/HomeHQ`, starts it at login,
+It downloads Node.js from nodejs.org if needed (no Homebrew or password), copies the app to `~/HomeHQ`, starts it at login,
 and prints your addresses and the first admin PIN.
 
 | What | Where |

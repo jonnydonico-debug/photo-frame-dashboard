@@ -14,6 +14,7 @@
 #   homehq plex-scan                    rescan every Plex library
 set -euo pipefail
 HQ="${HOMEHQ_HOME:-$HOME/HomeHQ}"
+export PATH="$HQ/node/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 URL="${HOMEHQ_URL:-http://localhost:8787}"
 TOKEN="${HOMEHQ_TOKEN:-$(/usr/bin/env node -e 'console.log(require(process.argv[1]).apiToken)' "$HQ/data/secrets.json" 2>/dev/null || true)}"
 [ -n "$TOKEN" ] || { echo "No API token. Is Home HQ installed in $HQ?" >&2; exit 1; }

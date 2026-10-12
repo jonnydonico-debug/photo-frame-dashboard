@@ -29,17 +29,27 @@ done
 [ "$(uname)" = "Darwin" ] || die "Run this on the Mac mini."
 
 # ---------------------------------------------------------------- Node.js
-export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+export PATH="$HQ/node/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 if ! command -v node >/dev/null 2>&1; then
-  if command -v brew >/dev/null 2>&1; then
-    say "Installing Node.js with Homebrew…"; brew install node
-  else
-    die "Node.js isn't installed. Install Homebrew first (https://brew.sh), then run this again."
-  fi
+  # No Homebrew or admin password needed: use the official Node.js 22 LTS build, checked against
+  # nodejs.org's published SHA-256, unpacked into ~/HomeHQ/node.
+  ARCH="$(uname -m)"; [ "$ARCH" = "x86_64" ] && ARCH="x64"
+  BASE="https://nodejs.org/dist/latest-v22.x"
+  say "Downloading Node.js 22 LTS ($ARCH) from nodejs.org…"
+  SUMS="$(curl -fsSL "$BASE/SHASUMS256.txt")" || die "Couldn't reach nodejs.org. Check the internet connection."
+  LINE="$(printf '%s\n' "$SUMS" | grep "darwin-$ARCH.tar.gz$" | head -1)"
+  [ -n "$LINE" ] || die "No Node.js build found for darwin-$ARCH"
+  FILE="${LINE##* }"; SUM="${LINE%% *}"
+  TMP="$(mktemp -d)"
+  curl -fL --progress-bar "$BASE/$FILE" -o "$TMP/$FILE"
+  [ "$(shasum -a 256 "$TMP/$FILE" | cut -d' ' -f1)" = "$SUM" ] || die "Node.js download failed its checksum. Try again."
+  mkdir -p "$HQ"; rm -rf "$HQ/node"
+  tar -xzf "$TMP/$FILE" -C "$TMP" && mv "$TMP/${FILE%.tar.gz}" "$HQ/node"
+  rm -rf "$TMP"
 fi
 NODE="$(command -v node)"
 NODE_MAJOR="$("$NODE" -p 'process.versions.node.split(".")[0]')"
-[ "$NODE_MAJOR" -ge 18 ] || die "Node $NODE_MAJOR is too old; run: brew upgrade node"
+[ "$NODE_MAJOR" -ge 18 ] || die "Node $NODE_MAJOR is too old. Remove it or update it, then run this again."
 say "Using Node $("$NODE" -v) at $NODE"
 
 # ---------------------------------------------------------------- files
@@ -68,7 +78,7 @@ cat > "$PLIST" <<PL
   <key>EnvironmentVariables</key><dict>
     <key>PORT</key><string>$PORT</string>
     <key>HOMEHQ_DATA</key><string>$HQ/data</string>
-    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>PATH</key><string>$HQ/node/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
   </dict>
   <key>WorkingDirectory</key><string>$APP</string>
   <key>RunAtLoad</key><true/>
