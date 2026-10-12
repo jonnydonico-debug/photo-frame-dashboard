@@ -253,7 +253,7 @@ function photos() {
   return `<section class="block"><div class="block-h"><h2 class="serif">Photos</h2><span class="muted">${list.length}</span></div>
     <p class="intro">These rotate on the Photos tab, the Today tile and the screensaver.</p>
     <div class="f f--wide"><span class="f-l">iCloud shared album</span>
-      <span class="row"><input id="icloud-url" placeholder="https://www.icloud.com/sharedalbum/#B0…" value="${cfg.icloud.set ? '••• linked •••' : ''}"><button class="btn btn--solid" data-icloud>${cfg.icloud.set ? 'Sync now' : 'Link'}</button>${cfg.icloud.set ? '<button class="btn btn--s btn--danger" data-icloudoff>Unlink</button>' : ''}</span>
+      <span class="row"><input id="icloud-url" placeholder="Paste the album’s share link" value="${cfg.icloud.set ? '••• linked •••' : ''}"><button class="btn btn--solid" data-icloud>${cfg.icloud.set ? 'Sync now' : 'Link'}</button>${cfg.icloud.set ? '<button class="btn btn--s btn--danger" data-icloudoff>Unlink</button>' : ''}</span>
       <span class="muted small">${cfg.icloud.set ? (cfg.icloud.status.ok ? 'Synced ' + esc(cfg.icloud.status.name || '') + ' · ' + cfg.icloud.status.count + ' photos · new ones arrive within 20 minutes' : esc(cfg.icloud.status.error || 'Syncing…')) : 'iPhone: Photos → the shared album → People icon → turn on <b>Public Website</b> → Share Link. Paste it here.'}</span></div>
     <p class="intro">Or add pictures from this device (they’re resized before upload):</p>
     <div class="up">

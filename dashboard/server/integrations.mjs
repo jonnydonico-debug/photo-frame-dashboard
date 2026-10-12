@@ -87,7 +87,27 @@ export function createIntegrations(ctx) {
 
   // ---------------------------------------------------------------- iCloud shared album (public website link)
   const B62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-  function albumToken(link) { const m = String(link || '').match(/#([A-Za-z0-9]+)/); return m ? m[1] : null; }
+  function albumToken(link) {
+    const s = String(link || '');
+    const m = s.match(/#([A-Za-z0-9]{10,})/) || s.match(/sharedalbum\/(?:#)?([AB][A-Za-z0-9]{10,})/);
+    return m ? m[1] : null;
+  }
+  // Newer share links (photos.icloud.com, share.icloud.com, apple.co) don't show the album token, so
+  // follow the link the way a browser would and pick the token out of where it lands.
+  async function resolveAlbumLink(link) {
+    let url = String(link || '').trim();
+    if (albumToken(url)) return albumToken(url);
+    if (!/^https:\/\/[^/]*(icloud\.com|apple\.co)\b/i.test(url)) return null;
+    for (let i = 0; i < 6; i++) {
+      const r = await fetch(url, { redirect: 'manual', headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15' }, signal: AbortSignal.timeout(15000) });
+      const loc = r.headers.get('location');
+      if (loc) { url = new URL(loc, url).toString(); if (albumToken(url)) return albumToken(url); continue; }
+      const html = await r.text();
+      const m = html.match(/sharedalbum\/#([A-Za-z0-9]{10,})/) || html.match(/["'#](B[0-9A-Za-z]{14})["']/);
+      return m ? m[1] : null;
+    }
+    return null;
+  }
   function albumBase(token) {
     const part = token[0] === 'A' ? B62.indexOf(token[1]) : B62.indexOf(token[1]) * 62 + B62.indexOf(token[2]);
     return 'https://p' + String(part).padStart(2, '0') + '-sharedstreams.icloud.com/' + token + '/sharedstreams/';
@@ -103,7 +123,7 @@ export function createIntegrations(ctx) {
   }
   let albumStatus = { ok: false, note: 'Not set up' }, albumBusy = false;
   async function syncAlbum() {
-    const token = albumToken(secrets.icloudAlbum);
+    const token = secrets.icloudAlbumToken || albumToken(secrets.icloudAlbum);
     if (!token || albumBusy) return albumStatus;
     albumBusy = true;
     const dir = path.join(photosDir, 'icloud');
@@ -271,7 +291,7 @@ export function createIntegrations(ctx) {
   }
 
   return {
-    start, geocode, routeBoth, refreshCommute, refreshBart, syncAlbum, albumStatus: () => albumStatus, albumToken,
+    start, geocode, routeBoth, refreshCommute, refreshBart, syncAlbum, albumStatus: () => albumStatus, albumToken, resolveAlbumLink,
     spotifyAuthUrl, spotifyCallback, spotifyCommand, spotifyLibrary, spotifySearch, spotifyStatus: () => spStatus,
     spotifyDisconnect() { secrets.spotify = { clientId: SP().clientId, clientSecret: SP().clientSecret }; saveSecrets(); clearInterval(spTimer); spState = { connected: false }; commit({ music: { connected: false } }, 'server'); },
     BART_STATIONS

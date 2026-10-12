@@ -535,9 +535,13 @@ async function api(req, res, url) {
     }
     if (sub === 'icloud' && m === 'POST') {
       const b = await readBody(req);
-      if (b.url && !X.albumToken(b.url)) return send(res, 400, { error: 'That doesn’t look like an iCloud shared album link (https://www.icloud.com/sharedalbum/#…)' });
       if (b.sync && !b.url) return send(res, 200, await X.syncAlbum());
-      secrets.icloudAlbum = b.url || ''; saveSecrets();
+      let token = null;
+      if (b.url) {
+        token = await X.resolveAlbumLink(b.url).catch(() => null);
+        if (!token) return send(res, 400, { error: 'Couldn’t open that as a shared album. Use the album’s share link (Public Website), not a link to single photos.' });
+      }
+      secrets.icloudAlbum = b.url || ''; secrets.icloudAlbumToken = token || ''; saveSecrets();
       if (!b.url) { commit({ photos: (state.photos || []).filter(x => !x.icloud) }, 'admin'); return send(res, 200, { ok: true }); }
       return send(res, 200, await X.syncAlbum());
     }
