@@ -286,7 +286,16 @@ export function createIntegrations(ctx) {
   async function refreshSpotify() {
     if (!SP().refreshToken) return;
     try {
-      const p = await sp('GET', '/me/player?additional_types=episode');
+      let p = await sp('GET', '/me/player?additional_types=episode');
+      // Music queued on the Sonos (not a Spotify Connect session) is invisible to Spotify: ask the speaker.
+      const t = secrets.musicTarget;
+      if (t && t.sonos && !(p && p.item && p.is_playing)) {
+        const room = await sonos.find(t.name).catch(() => null);
+        const n = room ? await sonos.nowPlaying(room).catch(() => null) : null;
+        if (n && n.title) p = { is_playing: n.playing, progress_ms: n.progress, shuffle_state: false, repeat_state: 'off', context: null,
+          device: { id: null, name: room.name, type: 'Speaker', volume_percent: n.volume, is_restricted: true },
+          item: { name: n.title, artists: [{ name: n.artist }], album: { name: n.album, images: n.art ? [{ url: n.art, width: 300 }] : [] }, uri: n.uri, duration_ms: n.duration } };
+      }
       if (Date.now() - devicesAt > 30000) { devices = ((await sp('GET', '/me/player/devices')) || {}).devices || []; devicesAt = Date.now(); }
       const it = p && p.item;
       const next = {
@@ -344,7 +353,8 @@ export function createIntegrations(ctx) {
         secrets.musicTarget = { id: b.device, name, sonos: true }; saveSecrets();
         // Bring whatever is playing on Spotify over to the Sonos
         if (spState.playing && cur && cur.id && !cur.restricted && (spState.context || spState.uri)) {
-          await sonos.playSpotify(room, /:(album|playlist):/.test(spState.context) ? spState.context : [spState.uri], 0);
+          const list = /:(album|playlist):/.test(spState.context) ? await trackList({ uri: spState.context }).catch(() => [spState.uri]) : [spState.uri];
+          await sonos.playSpotify(room, list, Math.max(0, list.indexOf(spState.uri)));
           await sp('PUT', '/me/player/pause').catch(() => {});
         }
         setTimeout(refreshSpotify, 1200);
@@ -358,7 +368,7 @@ export function createIntegrations(ctx) {
     if (b.action === 'play' && (b.uri || b.uris)) {
       const room = await sonosRoomFor();
       if (room) {
-        const r = await sonos.playSpotify(room, b.uris || b.uri, +b.offset || 0);
+        const r = await sonos.playSpotify(room, await trackList(b), +b.offset || 0);
         if (cur && cur.id && !cur.restricted && spState.playing) await sp('PUT', '/me/player/pause').catch(() => {});
         setTimeout(refreshSpotify, 1500);
         return Object.assign({ via: 'sonos' }, r);
@@ -411,6 +421,15 @@ export function createIntegrations(ctx) {
     };
     libCache = { at: Date.now(), data };
     return data;
+  }
+  // Songs to queue on a Sonos for a play request
+  async function trackList(b) {
+    if (b.uris) return b.uris;
+    if (/:track:/.test(b.uri)) return [b.uri];
+    const it = await spotifyItems(b.uri);
+    const list = (it.tracks || []).map(x => x.uri);
+    if (!list.length) throw new Error('Spotify won’t share the songs in this playlist, so it can’t be sent to the Sonos. Play it from the Spotify app instead.');
+    return list;
   }
   // Open an album / playlist / artist / Liked Songs to see its tracks
   async function spotifyItems(uri) {
