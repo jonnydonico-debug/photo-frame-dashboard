@@ -21,8 +21,9 @@
     if (!L || V.map) return !!V.map;
     var box = V.el.querySelector('.mp-map');
     V.map = L.map(box, { zoomControl: false, attributionControl: true, tap: true }).setView(h ? [h.lat, h.lon] : [37.9161, -122.3108], 14);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19, subdomains: 'abcd', attribution: '© OpenStreetMap contributors © CARTO'
+    // OpenStreetMap's own tiles: free, no key (CARTO started requiring one).
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '© OpenStreetMap contributors', className: 'mp-tiles'
     }).addTo(V.map);
     L.control.zoom({ position: 'bottomright' }).addTo(V.map);
     V.layers = L.layerGroup().addTo(V.map);
