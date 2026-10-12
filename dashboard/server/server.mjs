@@ -351,7 +351,7 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.
   '.webmanifest': 'application/manifest+json', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.txt': 'text/plain' };
 function send(res, code, body, headers = {}) {
   const isObj = body !== null && typeof body === 'object' && !Buffer.isBuffer(body);
-  res.writeHead(code, Object.assign({ 'Content-Type': isObj ? 'application/json' : 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }, headers));
+  res.writeHead(code, Object.assign({ 'Content-Type': isObj ? 'application/json' : 'text/plain; charset=utf-8', 'Cache-Control': 'no-store, max-age=0' }, headers));
   res.end(isObj ? JSON.stringify(body) : body);
 }
 function readBody(req, limit = 30e6) {
@@ -374,6 +374,18 @@ async function serveFile(res, file, cache) {
     fs.createReadStream(file).pipe(res);
     return true;
   } catch { return false; }
+}
+const BUILD = (() => {
+  const h = crypto.createHash('sha1');
+  const walk = d => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) walk(p); else h.update(p + fs.statSync(p).mtimeMs); } };
+  try { ['js', 'css'].forEach(d => walk(path.join(ROOT, d))); } catch {}
+  return h.digest('hex').slice(0, 10);
+})();
+async function servePage(res, name) {
+  let html = await fsp.readFile(path.join(ROOT, name), 'utf8');
+  html = html.replace(/(href|src)="\/?((?:css|js)\/[^"]+)"/g, (m, a, p) => a + '="/v/' + BUILD + '/' + p + '"');
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store, max-age=0' });
+  res.end(html);
 }
 function safeJoin(base, rel) {
   const p = path.resolve(base, '.' + path.posix.normalize('/' + rel));
@@ -703,6 +715,14 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(200, { 'Content-Type': r.headers.get('content-type') || 'image/jpeg', 'Cache-Control': 'public, max-age=3600' });
         return res.end(Buffer.from(await r.arrayBuffer()));
       } catch { return send(res, 404, 'No art'); }
+    }
+    // Pages are never cached; their CSS/JS load from /v/<build>/… so every update reaches the
+    // frame right away (Cloudflare otherwise tells browsers to keep files for 4 hours).
+    if (FROM_SOURCE) {
+      const isAdminPage = (isAdminHost(req) && (url.pathname === '/' || url.pathname === '/index.html')) || url.pathname === '/admin' || url.pathname === '/admin/';
+      if (isAdminPage || url.pathname === '/' || url.pathname === '/index.html') return servePage(res, isAdminPage ? 'admin.html' : 'index.html');
+      const vm = url.pathname.match(/^\/v\/[\w-]+(\/.*)$/);
+      if (vm && SOURCE_OK.test(vm[1]) && await serveFile(res, safeJoin(ROOT, vm[1].slice(1)), 'public, max-age=31536000, immutable')) return;
     }
     if (isAdminHost(req) && (url.pathname === '/' || url.pathname === '/index.html')) { if (await serveFile(res, path.join(DIST, 'admin.html'))) return; }
     if (url.pathname === '/admin' || url.pathname === '/admin/') { if (await serveFile(res, path.join(DIST, 'admin.html'))) return; }
