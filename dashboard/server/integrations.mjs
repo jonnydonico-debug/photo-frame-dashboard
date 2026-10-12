@@ -132,7 +132,7 @@ export function createIntegrations(ctx) {
     const ap = res.anonymousPublicAccess;
     const title = res.share && res.share.fields && res.share.fields['cloudkit.title'] ? res.share.fields['cloudkit.title'].value : 'Shared album';
     const q = ap.databasePartition.replace(/:443$/, '') + '/database/1/com.apple.photos.cloud/production/shared/records/query?remapEnums=true&getCurrentSyncToken=true&sharing_url_key=' + key + '&publicAccessAuthToken=' + encodeURIComponent(ap.token);
-    const masters = {}, assets = [];
+    const masters = {}, assets = [], seen = new Set();
     for (let rank = 0, page = 0; page < 50; page++) {
       const r = await j(q, { method: 'POST', headers: CK_HEADERS, timeout: 30000, body: JSON.stringify({
         query: { recordType: 'CPLAssetAndMasterByAddedDate', filterBy: [
@@ -140,19 +140,21 @@ export function createIntegrations(ctx) {
           { fieldName: 'startRank', comparator: 'EQUALS', fieldValue: { type: 'INT64', value: rank } }] },
         zoneID: res.zoneID, resultsLimit: 200 }) });
       const recs = r.records || [];
-      let n = 0;
+      let n = 0, fresh = 0;
       for (const x of recs) {
         if (x.recordType === 'CPLMaster') masters[x.recordName] = x.fields;
-        if (x.recordType === 'CPLAsset') { assets.push(x.fields); n++; }
+        if (x.recordType === 'CPLAsset') { n++; if (!seen.has(x.recordName)) { seen.add(x.recordName); assets.push(x.fields); fresh++; } }
       }
-      if (!n) break;
+      // Past the end the server can repeat the last page, so stop when nothing new arrives.
+      if (!n || !fresh) break;
       rank += n;
       if (assets.length >= 1000) break;
     }
-    const items = [];
+    const items = [], done = new Set();
     for (const a of assets) {
       const ref = a.masterRef && a.masterRef.value && a.masterRef.value.recordName, m = masters[ref];
-      if (!m || !m.resJPEGMedRes) continue;
+      if (!m || !m.resJPEGMedRes || done.has(ref)) continue;
+      done.add(ref);
       const type = m.itemType ? m.itemType.value : '';
       if (/movie|mpeg|video/i.test(type)) continue;
       let w = m.resJPEGMedWidth ? m.resJPEGMedWidth.value : 0, h = m.resJPEGMedHeight ? m.resJPEGMedHeight.value : 0;
