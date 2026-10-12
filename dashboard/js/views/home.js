@@ -59,7 +59,8 @@
     var name = (s && s.name) || (c && c.name) || code;
     var walk = c && c.walk ? c.walk.min : null;
     var lines = (s && s.lines) || [];
-    var rows = lines.slice(0, 3).map(function (l) {
+    // Room for 3 trains a station, or 2 while a service alert is showing
+    var rows = lines.slice(0, B.advisory ? 2 : 3).map(function (l) {
       return '<div class="hm-line" style="--lc:' + App.esc(l.color) + '"><i></i><span class="hm-dest">' + App.esc(l.dest) + '</span>' +
         '<span class="hm-mins">' + l.mins.slice(0, 3).map(function (m) {
           var miss = walk != null && m < walk;
