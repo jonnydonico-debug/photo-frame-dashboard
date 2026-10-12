@@ -52,9 +52,15 @@ to run scenes, lights, shopping, events, chores and messages on the frame.
 
 ## Outside the house (sabadorks.com)
 
-Use a Cloudflare Tunnel to `http://localhost:8787` with Cloudflare Access in front.
-Requests through the tunnel cannot change anything without the admin PIN.
-After creating the tunnel in Cloudflare, connect it with:
+A Cloudflare Tunnel connects the Mac mini to Cloudflare, so nothing on your router is opened.
+
+| Hostname | Goes to | Who gets in |
+| --- | --- | --- |
+| `admin.sabadorks.com` | Admin panel | Cloudflare Access (your email), then your PIN |
+| `frame.sabadorks.com` | The dashboard | Cloudflare Access: your home's internet address, or your email |
+
+Anything arriving through the tunnel without Cloudflare Access can't change anything.
+Connect the tunnel (cloudflared is downloaded for you, no password needed):
 
 ```sh
 bash ~/Documents/HomeHQ-installer/install.sh --tunnel-token <token from Cloudflare>

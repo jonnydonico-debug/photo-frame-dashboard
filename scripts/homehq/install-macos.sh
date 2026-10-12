@@ -21,7 +21,8 @@ while [ $# -gt 0 ]; do
     --tunnel-token) TUNNEL_TOKEN="${2:-}"; shift 2 ;;
     --uninstall)
       launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
-      rm -f "$PLIST"; say "Stopped Home HQ. Your data is still in $HQ/data."; exit 0 ;;
+      launchctl bootout "gui/$(id -u)/com.homehq.tunnel" 2>/dev/null || true
+      rm -f "$PLIST" "$HOME/Library/LaunchAgents/com.homehq.tunnel.plist"; say "Stopped Home HQ. Your data is still in $HQ/data."; exit 0 ;;
     *) die "Unknown option $1" ;;
   esac
 done
@@ -97,12 +98,38 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
 done
 curl -fs "http://localhost:$PORT/api/me" >/dev/null 2>&1 || die "Server didn't start. See $HQ/logs/server.log"
 
-# ---------------------------------------------------------------- Cloudflare Tunnel (optional)
+# ---------------------------------------------------------------- Cloudflare Tunnel (optional, no sudo)
+# Runs cloudflared as a login item, like the server. The token lives in a plist only you can read.
 if [ -n "$TUNNEL_TOKEN" ]; then
-  command -v cloudflared >/dev/null 2>&1 || { say "Installing cloudflared…"; brew install cloudflared; }
-  say "Connecting the Cloudflare Tunnel (asks for your Mac password)…"
-  sudo cloudflared service uninstall >/dev/null 2>&1 || true
-  sudo cloudflared service install "$TUNNEL_TOKEN"
+  CF="$HQ/bin/cloudflared"
+  if [ ! -x "$CF" ]; then
+    CARCH="$(uname -m)"; [ "$CARCH" = "x86_64" ] && CARCH="amd64"
+    say "Downloading cloudflared from Cloudflare's GitHub releases…"
+    TMP="$(mktemp -d)"
+    curl -fL --progress-bar "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-$CARCH.tgz" -o "$TMP/cf.tgz" \
+      || die "Couldn't download cloudflared."
+    tar -xzf "$TMP/cf.tgz" -C "$TMP" && mv "$TMP/cloudflared" "$CF" && chmod +x "$CF"; rm -rf "$TMP"
+    xattr -d com.apple.quarantine "$CF" 2>/dev/null || true
+  fi
+  "$CF" --version >/dev/null || die "cloudflared won't run on this Mac."
+  TPLIST="$HOME/Library/LaunchAgents/com.homehq.tunnel.plist"
+  cat > "$TPLIST" <<PL
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.homehq.tunnel</string>
+  <key>ProgramArguments</key><array><string>$CF</string><string>tunnel</string><string>--no-autoupdate</string><string>run</string></array>
+  <key>EnvironmentVariables</key><dict><key>TUNNEL_TOKEN</key><string>$TUNNEL_TOKEN</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>$HQ/logs/tunnel.log</string>
+  <key>StandardErrorPath</key><string>$HQ/logs/tunnel.log</string>
+</dict></plist>
+PL
+  chmod 600 "$TPLIST"
+  launchctl bootout "gui/$(id -u)/com.homehq.tunnel" 2>/dev/null || true
+  launchctl bootstrap "gui/$(id -u)" "$TPLIST"
+  say "Cloudflare Tunnel connected (log: $HQ/logs/tunnel.log)"
 fi
 
 # ---------------------------------------------------------------- done

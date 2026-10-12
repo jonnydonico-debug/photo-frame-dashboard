@@ -137,6 +137,10 @@ function clientIp(req) { return (req.socket.remoteAddress || '').replace(/^::fff
 // Requests that came in through Cloudflare (Tunnel) are from the internet, even though they reach
 // us on localhost. They need an admin login to change anything.
 function viaInternet(req) { return !!(req.headers['cf-connecting-ip'] || req.headers['cf-ray'] || req.headers['x-forwarded-for']); }
+// Cloudflare Access adds this after someone signs in (or a home-IP bypass rule lets the frame through).
+// Treat those like the home network: day-to-day changes allowed, admin still needs the PIN.
+function viaAccess(req) { return viaInternet(req) && !!req.headers['cf-access-jwt-assertion']; }
+const isAdminHost = req => /^admin\./i.test(String(req.headers.host || ''));
 // Home network, Tailscale (100.64/10) or this machine.
 function isPrivate(ip) {
   if (ip === '::1' || ip.startsWith('127.') || ip.startsWith('10.') || ip.startsWith('192.168.')) return true;
@@ -350,7 +354,7 @@ function personId(q) {
 
 // ------------------------------------------------------------------ routes
 async function api(req, res, url) {
-  const p = url.pathname, m = req.method, admin = isAdmin(req), ip = clientIp(req), home = isPrivate(ip) && !viaInternet(req);
+  const p = url.pathname, m = req.method, admin = isAdmin(req), ip = clientIp(req), home = (isPrivate(ip) && !viaInternet(req)) || viaAccess(req);
   const needAdmin = () => { if (!admin) { send(res, 401, { error: 'Admin login required' }); return true; } return false; };
   if (m !== 'GET' && m !== 'HEAD' && !admin && req.headers['x-hq'] !== '1') return send(res, 403, { error: 'Missing X-HQ header' });
 
@@ -579,6 +583,7 @@ const server = http.createServer(async (req, res) => {
         return res.end(Buffer.from(await r.arrayBuffer()));
       } catch { return send(res, 404, 'No art'); }
     }
+    if (isAdminHost(req) && (url.pathname === '/' || url.pathname === '/index.html')) { if (await serveFile(res, path.join(DIST, 'admin.html'))) return; }
     if (url.pathname === '/admin' || url.pathname === '/admin/') { if (await serveFile(res, path.join(DIST, 'admin.html'))) return; }
     if (FROM_SOURCE) {
       const rel = url.pathname === '/' ? '/index.html' : url.pathname;

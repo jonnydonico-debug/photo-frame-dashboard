@@ -4,6 +4,7 @@ const CLIENT = 'admin-' + Math.random().toString(36).slice(2, 8);
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const DASH = /^admin\./.test(location.hostname) ? location.protocol + '//' + location.hostname.replace(/^admin\./, 'frame.') + '/' : '/';
 const rid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 let S = null, rev = 0, cfg = null, shortcuts = [], section = 'overview', openItem = null, deferred = false;
@@ -201,7 +202,7 @@ function overview() {
         <div><b>${open}</b><span>to buy</span></div><div><b>${W.t ? W.t[new Date().getHours()] + '°' : '—'}</b><span>${W.live ? esc(W.place || 'outside') : 'demo weather'}</span></div>
       </div>
       <div class="row wrap">
-        <a class="btn btn--solid" href="/" target="_blank">Open the dashboard ↗</a>
+        <a class="btn btn--solid" href="${DASH}" target="_blank">Open the dashboard ↗</a>
         <button class="btn" data-alloff>All lights off</button>
       </div>
     </section>
@@ -330,7 +331,7 @@ function render() {
   $('#app').className = '';
   $('#app').innerHTML = `
     <header class="top"><a class="brand serif" href="#overview">${esc((S.settings && S.settings.title) || 'Home HQ')} <i>admin</i></a>
-      <a class="btn btn--s" href="/" target="_blank">Dashboard ↗</a></header>
+      <a class="btn btn--s" href="${DASH}" target="_blank">Dashboard ↗</a></header>
     <nav class="tabs">${SECTIONS.map(([k, l]) => `<a href="#${k}" class="${k === section ? 'is-on' : ''}">${l}</a>`).join('')}</nav>
     <main class="main">${RENDER[section]()}</main>
     <datalist id="shortcut-list">${shortcuts.map(s => `<option value="${esc(s)}">`).join('')}</datalist>
