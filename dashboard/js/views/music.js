@@ -62,11 +62,11 @@
       '<div class="mu-hero">' + (X.art ? '<img src="' + App.esc(X.art) + '" alt="">' : '<span class="mu-tile-ph mu-tile-ph--liked">' + App.icon(X.kind === 'liked' ? 'heart' : 'music', 40) + '</span>') +
       '<div><span class="label">' + App.esc({ playlist: 'Playlist', album: 'Album', artist: 'Artist', liked: 'Your library' }[X.kind] || '') + '</span>' +
       '<h2 class="serif">' + App.esc(X.name) + '</h2><small>' + App.esc(X.by || '') + '</small>' +
-      (X.tracks.length ? '<button class="mu-playall" data-ti="0">' + App.icon('play', 22) + ' Play' + (X.kind === 'artist' ? ' top songs' : '') + '</button>' : '') + '</div></div>' +
+      (X.tracks.length || X.playAs === 'context' ? '<button class="mu-playall" data-ti="0">' + App.icon('play', 22) + ' Play' + (X.kind === 'artist' ? ' top songs' : '') + '</button>' : '') + '</div></div>' +
       (X.tracks.length ? '<div class="mu-tracks">' + X.tracks.map(function (t, i) {
         return '<button class="mu-track' + (t.uri === nowUri ? ' is-now' : '') + '" data-ti="' + i + '"><span class="num">' + (i + 1) + '</span>' +
           '<span><b>' + App.esc(t.name) + '</b><small>' + App.esc(t.by) + '</small></span><em class="num">' + fmtMs(t.ms) + '</em></button>';
-      }).join('') + '</div>' : '<p class="mu-note">No songs here.</p>') +
+      }).join('') + '</div>' : '<p class="mu-note">' + (X.kind === 'playlist' ? 'Spotify only shows the song list for playlists you made. Press Play to play this one.' : 'No songs here.') + '</p>') +
       (X.albums && X.albums.length ? '<div class="label">Albums</div><div class="mu-tiles">' + X.albums.map(tile).join('') + '</div>' : '');
   }
   function openItem(uri) {
@@ -83,6 +83,7 @@
     var X = V.detail;
     if (!hasSpeaker()) return openSpeakers();
     var t = X.tracks[i];
+    if (!X.tracks.length) { App.toast('Playing <b>' + App.esc(X.name) + '</b>', { icon: 'music', ms: 2200 }); return App.musicCmd('play', { uri: X.uri }); }
     App.toast('Playing <b>' + App.esc(t ? t.name : X.name) + '</b>', { icon: 'music', ms: 2200 });
     if (X.playAs === 'context') App.musicCmd('play', { uri: X.uri, offset: i });
     else App.musicCmd('play', { uris: X.tracks.map(function (x) { return x.uri; }), offset: i });

@@ -139,10 +139,20 @@ export function createSonos({ log }) {
     const coord = rooms.find(r => r.host === h) || room;
     const list = Array.isArray(items) ? items : [items];
     await soap(h, 'transport', 'RemoveAllTracksFromQueue', { InstanceID: 0 });
+    // Region tags differ by account; try the one we found, then the usual US/EU Spotify ones.
+    const descs = [...new Set([acc.desc, 'SA_RINCON3079_X_#Svc3079-0-Token', 'SA_RINCON2311_X_#Svc2311-0-Token'])];
+    let added = 0, lastErr = null;
     for (const uri of list.slice(0, 50)) {
-      const a = enqueueArgs(uri, acc);
-      await soap(h, 'transport', 'AddURIToQueue', { InstanceID: 0, EnqueuedURI: escapeXml(a.u), EnqueuedURIMetaData: escapeXml(a.m), DesiredFirstTrackNumberEnqueued: 0, EnqueueAsNext: 0 });
+      for (const desc of descs) {
+        const a = enqueueArgs(uri, Object.assign({}, acc, { desc }));
+        try {
+          await soap(h, 'transport', 'AddURIToQueue', { InstanceID: 0, EnqueuedURI: escapeXml(a.u), EnqueuedURIMetaData: escapeXml(a.m), DesiredFirstTrackNumberEnqueued: 0, EnqueueAsNext: 0 });
+          if (desc !== acc.desc) { acc.desc = desc; account = acc; descs.unshift(desc); }
+          added++; lastErr = null; break;
+        } catch (e) { lastErr = e; }
+      }
     }
+    if (!added) throw new Error('The Sonos wouldn’t take that from Spotify' + (lastErr ? ' (' + lastErr.message + ')' : ''));
     await soap(h, 'transport', 'SetAVTransportURI', { InstanceID: 0, CurrentURI: 'x-rincon-queue:' + coord.uuid + '#0', CurrentURIMetaData: '' });
     if (startAt > 0) { try { await soap(h, 'transport', 'Seek', { InstanceID: 0, Unit: 'TRACK_NR', Target: startAt + 1 }); } catch {} }
     await soap(h, 'transport', 'Play', { InstanceID: 0, Speed: 1 });
