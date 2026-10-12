@@ -100,6 +100,11 @@ curl -fs "http://localhost:$PORT/api/me" >/dev/null 2>&1 || die "Server didn't s
 
 # ---------------------------------------------------------------- Cloudflare Tunnel (optional, no sudo)
 # Runs cloudflared as a login item, like the server. The token lives in a plist only you can read.
+# Accept the whole command copied from Cloudflare ("cloudflared tunnel run --token eyJ…") or just the token.
+if [ -n "$TUNNEL_TOKEN" ]; then
+  for w in $TUNNEL_TOKEN; do case "$w" in eyJ*) TUNNEL_TOKEN="$w" ;; esac; done
+  case "$TUNNEL_TOKEN" in eyJ*) ;; *) die "That isn't a tunnel token. In Cloudflare: Tunnels → homehq-mac-mini → Add a connector, copy the 'cloudflared tunnel run --token eyJ…' box." ;; esac
+fi
 if [ -n "$TUNNEL_TOKEN" ]; then
   CF="$HQ/bin/cloudflared"
   if [ ! -x "$CF" ]; then
