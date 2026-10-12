@@ -53,7 +53,7 @@ function fmtWhen(e) {
 }
 function photoUrl(p, w) { return p.src || 'https://picsum.photos/seed/' + p.seed + '/' + (w || 300) + '/' + Math.round((w || 300) * (p.o === 'p' ? 1.4 : 0.66)); }
 const ICONS = ['sunrise', 'utensils', 'film', 'away', 'moon', 'sun', 'bulb', 'heart', 'star', 'home', 'bolt', 'music'];
-const VIEWS = [['home', 'Today'], ['calendar', 'Calendar'], ['tasks', 'Chores'], ['shopping', 'Shopping'], ['photos', 'Photos'], ['control', 'Home'], ['agents', 'Agents']];
+const VIEWS = [['home', 'Today'], ['calendar', 'Calendar'], ['tasks', 'Chores'], ['shopping', 'Shopping'], ['music', 'Music'], ['photos', 'Photos'], ['map', 'Map'], ['control', 'Home'], ['agents', 'Agents']];
 
 // ------------------------------------------------------------------ schema-driven list editor
 // field: { k, label, type: text|number|color|check|select|people|datetime|date|textarea|shortcut|json, opts: () => [[v,label]] }
@@ -187,7 +187,7 @@ function deviceControl(d) {
 
 // ------------------------------------------------------------------ sections
 const SECTIONS = [['overview', 'Overview'], ['family', 'Family'], ['calendar', 'Calendar'], ['chores', 'Chores'], ['shopping', 'Shopping'],
-  ['photos', 'Photos'], ['home', 'Lights & Home'], ['settings', 'Settings']];
+  ['photos', 'Photos'], ['music', 'Music'], ['home', 'Lights & Home'], ['settings', 'Settings']];
 
 function overview() {
   const lights = (S.devices || []).filter(d => d.type === 'light' && d.on).length;
@@ -198,8 +198,10 @@ function overview() {
   const base = location.origin;
   return `<section class="block hero-block">
       <div class="stats">
-        <div><b>${evs}</b><span>events today</span></div><div><b>${lights}</b><span>lights on</span></div>
-        <div><b>${open}</b><span>to buy</span></div><div><b>${W.t ? W.t[new Date().getHours()] + '°' : '—'}</b><span>${W.live ? esc(W.place || 'outside') : 'demo weather'}</span></div>
+        <div><b>${W.t && W.t.length ? W.t[new Date().getHours()] + '°' : '—'}</b><span>${W.live ? esc(W.place || 'outside') : 'no address yet'}</span></div>
+        <div><b>${(S.photos || []).length}</b><span>photos</span></div>
+        <div><b>${(S.music || {}).playing ? '▶' : '—'}</b><span>${(S.music || {}).connected ? esc(((S.music || {}).device || {}).name || 'Spotify') : 'Spotify off'}</span></div>
+        <div><b>${lights}</b><span>lights on</span></div>
       </div>
       <div class="row wrap">
         <a class="btn btn--solid" href="${DASH}" target="_blank">Open the dashboard ↗</a>
@@ -215,9 +217,12 @@ function overview() {
     <section class="block"><div class="block-h"><h2 class="serif">Status</h2></div>
       <ul class="status">
         <li><b>Plex</b> ${cfg.plex.status.ok ? `Connected · ${M.source === 'plex' && M.playing ? 'playing ' + esc(M.title) + ' on ' + esc(M.room) : 'idle'}` : esc(cfg.plex.status.error || 'Not set up')}</li>
-        <li><b>Weather</b> ${W.live ? 'Live for ' + esc(W.place) + ' · updated ' + new Date(W.updated).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Demo · set your location in Settings'}</li>
+        <li><b>Weather</b> ${W.live ? 'Live for ' + esc(W.place) + ' · updated ' + new Date(W.updated).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Add your home address in Settings'}</li>
+        <li><b>BART</b> ${S.bart && !S.bart.error ? 'Live · ' + (S.bart.stations || []).map(x => esc(x.name)).join(' + ') : esc((S.bart && S.bart.error) || 'Starting…')}</li>
+        <li><b>Photos</b> ${cfg.icloud.set ? (cfg.icloud.status.ok ? esc(cfg.icloud.status.name || 'Shared album') + ' · ' + cfg.icloud.status.count + ' photos' : esc(cfg.icloud.status.error || 'Syncing…')) : 'Link your iCloud shared album in Photos'}</li>
+        <li><b>Spotify</b> ${cfg.spotify.connected ? (cfg.spotify.status.ok ? 'Connected' : esc(cfg.spotify.status.error || 'Connected')) : 'Not connected · set it up in Music'}</li>
         <li><b>HomeKit</b> ${cfg.isMac ? (S.devices || []).filter(d => d.shortcut).length + ' of ' + (S.devices || []).length + ' devices linked to Shortcuts' : 'Shortcuts only run on the Mac mini'}</li>
-        <li><b>Data</b> ${S.settings && S.settings.demo ? 'Demo household · replace it in Settings → Start fresh' : 'Your household'}</li>
+
       </ul>
     </section>
     <section class="block"><div class="block-h"><h2 class="serif">Open it anywhere</h2></div>
@@ -246,7 +251,11 @@ function shopping() {
 function photos() {
   const list = S.photos || [], demo = list.filter(p => !p.src).length;
   return `<section class="block"><div class="block-h"><h2 class="serif">Photos</h2><span class="muted">${list.length}</span></div>
-    <p class="intro">These rotate on the Photos tab, the Today tile and the screensaver. Pictures are resized on this device before upload.</p>
+    <p class="intro">These rotate on the Photos tab, the Today tile and the screensaver.</p>
+    <div class="f f--wide"><span class="f-l">iCloud shared album</span>
+      <span class="row"><input id="icloud-url" placeholder="https://www.icloud.com/sharedalbum/#B0…" value="${cfg.icloud.set ? '••• linked •••' : ''}"><button class="btn btn--solid" data-icloud>${cfg.icloud.set ? 'Sync now' : 'Link'}</button>${cfg.icloud.set ? '<button class="btn btn--s btn--danger" data-icloudoff>Unlink</button>' : ''}</span>
+      <span class="muted small">${cfg.icloud.set ? (cfg.icloud.status.ok ? 'Synced ' + esc(cfg.icloud.status.name || '') + ' · ' + cfg.icloud.status.count + ' photos · new ones arrive within 20 minutes' : esc(cfg.icloud.status.error || 'Syncing…')) : 'iPhone: Photos → the shared album → People icon → turn on <b>Public Website</b> → Share Link. Paste it here.'}</span></div>
+    <p class="intro">Or add pictures from this device (they’re resized before upload):</p>
     <div class="up">
       <label class="f"><span class="f-l">From</span><select id="up-from">${(S.people || []).map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}<option value="family">Family</option></select></label>
       <label class="f"><span class="f-l">Place</span><input id="up-place" placeholder="Backyard"></label>
@@ -288,10 +297,11 @@ function settings() {
       <label class="f f--wide"><span class="f-l">Name</span><input data-setting="title" value="${esc(st.title || 'Home HQ')}"></label>
       <div class="f f--wide"><span class="f-l">Tabs on the frame</span><div class="chips">${VIEWS.map(([v, l]) => `<button class="chip ${(st.hiddenViews || []).includes(v) ? '' : 'is-on'}" data-view="${v}">${l}</button>`).join('')}</div></div>
     </section>
-    <section class="block"><div class="block-h"><h2 class="serif">Weather</h2></div>
-      <p class="intro">${st.lat != null ? 'Live forecast for <b>' + esc(st.place) + '</b>.' : 'Showing demo weather. Search your town to switch to the live forecast (Open-Meteo, no account needed).'}</p>
-      <div class="row"><input id="geo-q" placeholder="City or ZIP" value=""><button class="btn" data-geo>Search</button></div>
-      <div id="geo-res" class="chips"></div>
+    <section class="block"><div class="block-h"><h2 class="serif">Home address</h2></div>
+      <p class="intro">${st.address ? '<b>' + esc(st.address) + '</b><br>' : ''}Used for the weather, the Map tab, and walking/driving times to BART.</p>
+      ${S.commute && S.commute.stations ? '<ul class="status">' + S.commute.stations.map(x => `<li><b>${esc(x.name.replace('El Cerrito ', ''))}</b> walk ${x.walk ? x.walk.min + ' min · ' + x.walk.mi + ' mi' : '–'} · drive ${x.drive ? x.drive.min + ' min · ' + x.drive.mi + ' mi' : '–'}</li>`).join('') + '</ul>' : ''}
+      <div class="row"><input id="addr-q" placeholder="Street address, city" value=""><button class="btn" data-addr>Search</button></div>
+      <div id="addr-res" class="chips"></div>
       <label class="f"><span class="f-l">Units</span><select data-setting="units"><option value="fahrenheit" ${st.units !== 'celsius' ? 'selected' : ''}>°F</option><option value="celsius" ${st.units === 'celsius' ? 'selected' : ''}>°C</option></select></label>
     </section>
     <section class="block"><div class="block-h"><h2 class="serif">Plex</h2><span class="muted">${P.status.ok ? 'connected' : 'off'}</span></div>
@@ -321,8 +331,27 @@ function settings() {
       <ul class="status">${cfg.shortcutLog.map(l => `<li><b>${l.ok ? '✓' : '✕'} ${esc(l.name)}</b> ${esc(l.input)} · ${new Date(l.at).toLocaleTimeString()}${l.error ? ' · ' + esc(l.error) : ''}</li>`).join('') || '<li class="muted">None yet</li>'}</ul>
     </section>`;
 }
+function music() {
+  const sp = cfg.spotify, M = S.music || {};
+  return `<section class="block"><div class="block-h"><h2 class="serif">Spotify</h2><span class="muted">${sp.connected ? 'connected' : 'off'}</span></div>
+    ${sp.connected ? `<p class="intro">${M.title ? 'Now playing <b>' + esc(M.title) + '</b> · ' + esc(M.artist) + ' on ' + esc((M.device || {}).name || '?') : 'Connected. Nothing playing right now.'}</p>
+      <p class="intro">${(M.devices || []).length ? 'Speakers Spotify can see: ' + M.devices.map(d => esc(d.name)).join(', ') : 'No speakers visible yet. Open Spotify on a speaker, phone or the Mac mini.'}</p>
+      ${sp.status.ok ? '' : '<p class="warn">' + esc(sp.status.error || '') + '</p>'}
+      <div class="row wrap"><a class="btn" href="/api/spotify/login">Reconnect</a><button class="btn btn--danger" data-spoff>Disconnect</button></div>`
+    : `<ol class="steps">
+        <li>Go to <a href="https://developer.spotify.com/dashboard" target="_blank">developer.spotify.com/dashboard</a>, sign in, and click <b>Create app</b>.</li>
+        <li>Name it “Home HQ”. For <b>Redirect URI</b> paste:<br><code class="sel">${esc(sp.redirect)}</code></li>
+        <li>Tick <b>Web API</b>, agree, save. Open the app's <b>Settings</b> and copy the <b>Client ID</b> and <b>Client secret</b> below.</li>
+        <li>Press <b>Connect Spotify</b> and allow access. Playback control needs Spotify Premium.</li>
+      </ol>
+      ${/^http:\/\/(?!127\.0\.0\.1)/.test(sp.redirect) ? '<p class="warn">Spotify only accepts https addresses. Open this page at <b>https://admin.sabadorks.com</b> (or http://127.0.0.1:' + cfg.port + ' on the Mac mini) to connect.</p>' : ''}
+      <label class="f f--wide"><span class="f-l">Client ID</span><input id="sp-id" value="${esc(sp.clientId)}" autocomplete="off"></label>
+      <label class="f f--wide"><span class="f-l">Client secret ${sp.hasSecret ? '(saved)' : ''}</span><input id="sp-secret" type="password" placeholder="${sp.hasSecret ? '••••••••' : ''}" autocomplete="off"></label>
+      <div class="row wrap"><button class="btn btn--solid" data-spsave>Save + Connect Spotify</button></div>`}
+  </section>`;
+}
 let showPast = false; const moreKeys = {};
-const RENDER = { overview, family, calendar, chores, shopping, photos, home, settings };
+const RENDER = { overview, family, calendar, chores, shopping, photos, music, home, settings };
 
 // ------------------------------------------------------------------ shell
 function render() {
@@ -449,6 +478,31 @@ document.addEventListener('click', async e => {
       if (S.settings.hiddenViews.length >= VIEWS.length) S.settings.hiddenViews = [];
       await call('/api/admin/config', { method: 'POST', body: { settings: { hiddenViews: S.settings.hiddenViews } } }); return render();
     }
+    if (d.addr != null) {
+      $('#addr-res').innerHTML = '<span class="muted">Searching…</span>';
+      const res = await call('/api/admin/address-search?q=' + encodeURIComponent($('#addr-q').value));
+      $('#addr-res').innerHTML = res.map((r, i) => `<button class="chip" data-addrpick="${i}">${esc(r.label)}</button>`).join('') || '<span class="muted">No matches. Try adding the city.</span>';
+      $('#addr-res')._res = res; return;
+    }
+    if (d.addrpick) {
+      const r = $('#addr-res')._res[+d.addrpick];
+      flash('Saving and working out BART times…');
+      await call('/api/admin/address', { method: 'POST', body: { label: r.label, lat: r.lat, lon: r.lon } });
+      flash('Address saved'); return reload();
+    }
+    if (d.icloud != null) {
+      const v = $('#icloud-url').value.trim();
+      flash('Syncing album… this can take a minute');
+      const r = await call('/api/admin/icloud', { method: 'POST', body: { url: /^https?:/.test(v) ? v : undefined, sync: true } }).catch(e => ({ error: e.message }));
+      if (r && r.error) flash(r.error, true); else flash(r.ok ? 'Synced ' + r.count + ' photos' : (r.error || 'Done'));
+      return reload();
+    }
+    if (d.icloudoff != null) { if (!confirm('Unlink the shared album? Its photos leave the frame.')) return; await call('/api/admin/icloud', { method: 'POST', body: { url: '' } }); return reload(); }
+    if (d.spsave != null) {
+      await call('/api/admin/spotify', { method: 'POST', body: { clientId: $('#sp-id').value, clientSecret: $('#sp-secret').value } });
+      location.href = '/api/spotify/login'; return;
+    }
+    if (d.spoff != null) { if (!confirm('Disconnect Spotify?')) return; await call('/api/admin/spotify', { method: 'POST', body: { disconnect: true } }); return reload(); }
     if (d.geo != null) {
       const res = await call('/api/admin/geocode?q=' + encodeURIComponent($('#geo-q').value));
       $('#geo-res').innerHTML = res.map((r, i) => `<button class="chip" data-geopick="${i}">${esc(r.name)}</button>`).join('') || '<span class="muted">No matches</span>';
@@ -482,7 +536,7 @@ document.addEventListener('click', async e => {
     if (d.rawsave != null) { const k = $('#raw-key').value; S[k] = JSON.parse($('#raw').value); save(k, true); return; }
   } catch (err) { if (err.message !== 'login') flash(err.message, true); }
 });
-document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'quickadd') quickAdd(); if (e.key === 'Enter' && e.target.id === 'announce') $('[data-announce]').click(); if (e.key === 'Enter' && e.target.id === 'geo-q') $('[data-geo]').click(); });
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'quickadd') quickAdd(); if (e.key === 'Enter' && e.target.id === 'announce') $('[data-announce]').click(); if (e.key === 'Enter' && e.target.id === 'geo-q') $('[data-geo]').click(); if (e.key === 'Enter' && e.target.id === 'addr-q') $('[data-addr]').click(); });
 
 function quickAdd() {
   const inp = $('#quickadd'), name = inp.value.trim(); if (!name) return;

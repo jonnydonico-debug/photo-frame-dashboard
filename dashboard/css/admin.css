@@ -147,3 +147,7 @@ details textarea { font: 13px/1.4 ui-monospace, Menlo, monospace; margin-top: 8p
 @media (min-width: 900px) {
   .tabs { justify-content: center; }
 }
+
+.steps { margin: 0 0 12px; padding-left: 20px; font-size: 15px; }
+.steps li { margin-bottom: 8px; }
+code.sel { user-select: all; -webkit-user-select: all; word-break: break-all; display: inline-block; margin-top: 4px; }

@@ -8,7 +8,9 @@
   var D = window.DATA;
   var CLIENT = Math.random().toString(36).slice(2, 10);
   var KEYS = ['people', 'family', 'routines', 'chores', 'stars', 'week', 'stores', 'catOrder', 'groceries', 'catalog',
-    'usuals', 'rooms', 'devices', 'climate', 'media', 'cameras', 'scenes', 'weather', 'photos', 'agents', 'events', 'settings'];
+    'usuals', 'rooms', 'devices', 'climate', 'media', 'cameras', 'scenes', 'weather', 'photos', 'agents', 'events', 'settings',
+    'commute', 'bart', 'music'];
+  var LIVE = ['bart', 'music', 'commute', 'weather', 'climate', 'media'];
   var OPEN = ['chores', 'stars', 'week', 'groceries', 'events', 'devices', 'climate'];
   var snap = {}, rev = 0, online = false, pending = null, pushTimer = null, sceneHint = null;
 
@@ -109,6 +111,9 @@
         rev = Math.max(rev, msg.rev);
         if (msg.client === CLIENT) return;
         apply(msg.patch);
+        // Live feeds (BART, Spotify, weather) only repaint the views that show them.
+        var keys = Object.keys(msg.patch);
+        if (keys.every(function (k) { return LIVE.indexOf(k) > -1; })) { if (window.App && App.current) App.emit('live', keys); return; }
         refreshUI();
       } else if (msg.type === 'announce' && window.App) {
         if (App.mode !== 'day') App.setMode('day');

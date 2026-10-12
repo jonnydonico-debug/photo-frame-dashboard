@@ -104,3 +104,9 @@
 .cam-big .tk-live { left: 20px; top: 20px; }
 .cam-big-bar .label { position: absolute; left: 24px; bottom: 20px; }
 .is-pulse { box-shadow: 0 0 0 6px var(--warm); }
+
+/* Nothing connected yet */
+.sum--empty { grid-column: span 3; }
+.sum--empty b { font-size: 34px; font-weight: 400; }
+.sum--empty small { white-space: normal; font-size: 16px; }
+.hc-media { cursor: pointer; }

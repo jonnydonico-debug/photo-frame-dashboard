@@ -128,8 +128,10 @@
     for (var i = 0; i < D.routines.length; i++) if (h >= D.routines[i].from && h < D.routines[i].to) return D.routines[i];
     return D.routines[2];
   };
+  App.hasWeather = function () { var W = D.weather; return !!(W && W.t && W.t.length >= 24); };
   App.weatherNow = function () {
     var W = D.weather, h = App.now().getHours();
+    if (!App.hasWeather()) return { temp: '–', cond: 'cloud', label: 'No forecast yet', hi: '–', lo: '–', summary: 'Add your address in Admin', advice: 'Weather appears here', hour: h, none: true };
     var rainAt = -1;
     for (var i = h; i < 24; i++) if (W.p[i] >= 50) { rainAt = i; break; }
     var summary, advice;
@@ -150,6 +152,7 @@
   };
   App.hourly = function (count) {
     var W = D.weather, h = App.now().getHours(), out = [];
+    if (!App.hasWeather()) return out;
     for (var i = 0; i < count; i++) {
       var x = (h + i) % 24;
       out.push({ h: x, t: W.t[x], c: W.c[x], p: W.p[x], label: i === 0 ? 'Now' : ((x % 12 || 12) + (x >= 12 ? 'p' : 'a')) });

@@ -1,0 +1,55 @@
+/* Music — now playing on the left, speakers/search/playlists on the right. */
+.mu { height: 100%; display: grid; grid-template-columns: 430px 1fr; gap: 20px; }
+.mu-now { display: flex; flex-direction: column; align-items: stretch; gap: 14px; padding: 24px; min-height: 0; }
+.mu-art { width: 100%; aspect-ratio: 1 / 1; max-height: 340px; object-fit: cover; border-radius: 14px; background: var(--paper-2); display: block; }
+.mu-art--none { display: grid; place-items: center; color: var(--mute); }
+.mu-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mu-meta b { font-size: 30px; font-weight: 800; font-stretch: 85%; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mu-meta span { font-size: 20px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mu-prog { height: 5px; border-radius: 3px; background: var(--paper-2); overflow: hidden; }
+.mu-prog i { display: block; height: 100%; background: var(--ink); }
+.mu-ctl { display: flex; align-items: center; justify-content: space-between; }
+.mu-ctl button { width: 68px; height: 68px; border-radius: 50%; display: grid; place-items: center; }
+.mu-ctl button:active { background: var(--paper-2); }
+.mu-ctl .mu-play { width: 88px; height: 88px; background: var(--ink); color: var(--paper); }
+.mu-ctl .mu-sm { width: 56px; height: 56px; color: var(--mute); }
+.mu-ctl .mu-sm.is-on { color: var(--ok); }
+.mu-dev { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 14px; border-radius: 999px; background: var(--paper); font-size: 17px; color: var(--ink-2); }
+.mu-dev b { color: var(--ink); }
+.mu-vol { display: flex; align-items: center; gap: 12px; color: var(--mute); }
+.mu-vol input { flex: 1; height: 40px; accent-color: var(--ink); }
+.mu-empty { margin: auto 0; display: flex; flex-direction: column; gap: 12px; color: var(--ink-2); }
+.mu-empty-icon { color: var(--mute); }
+.mu-empty h2 { font-size: 46px; margin: 0; color: var(--ink); }
+.mu-empty p { font-size: 20px; line-height: 1.35; margin: 0; }
+
+.mu-side { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.mu-search { display: flex; align-items: center; gap: 10px; height: 64px; padding: 0 8px 0 20px; background: var(--card); border-radius: 999px; color: var(--mute); }
+.mu-search input { flex: 1; min-width: 0; border: 0; background: none; font: 600 20px var(--sans); color: var(--ink); outline: none; -webkit-appearance: none; }
+.mu-clear { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; }
+.mu-browse { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-bottom: 8px; }
+.mu-browse .label { margin-top: 4px; }
+.mu-note { color: var(--mute); font-size: 17px; margin: 6px 0; }
+.mu-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.mu-tile { display: flex; flex-direction: column; gap: 4px; text-align: left; min-width: 0; }
+.mu-tile img, .mu-tile-ph { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 12px; background: var(--paper-2); display: grid; place-items: center; color: var(--mute); }
+.mu-tile b { font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 4px; }
+.mu-tile small { font-size: 14px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mu-tile:active { transform: scale(.97); }
+.mu-rows { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.mu-rows--2 { grid-template-columns: 1fr 1fr; }
+.mu-row { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 6px 14px 6px 6px; border-radius: 12px; background: var(--card); text-align: left; min-width: 0; }
+.mu-row img, .mu-row > span:first-child { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; background: var(--paper-2); flex: none; }
+.mu-row > span { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.mu-row b { font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mu-row small { font-size: 14px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mu-row > svg { color: var(--mute); flex: none; }
+
+.mu-devs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 14px; }
+.mu-devrow { display: flex; align-items: center; gap: 14px; min-height: 80px; padding: 0 18px; border-radius: 16px; background: var(--paper); text-align: left; }
+.mu-devrow span { display: flex; flex-direction: column; min-width: 0; }
+.mu-devrow b { font-size: 20px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mu-devrow small { font-size: 15px; color: var(--mute); text-transform: capitalize; }
+.mu-devrow.is-on { background: var(--ink); color: var(--paper); }
+.mu-devrow.is-on small { color: rgba(255, 255, 255, .7); }
+.mu-devrow[disabled] { opacity: .45; }

@@ -59,15 +59,20 @@
   }
 
   function summary() {
+    if (!D.devices.length) {
+      var M0 = D.music || {};
+      return '<div class="sum sum--empty"><span class="label">Lights &amp; home</span><b class="serif">Nothing connected yet</b><small>Add lights in Admin → Lights &amp; Home and link each one to a HomeKit Shortcut.</small></div>' +
+        '<button class="sum" data-go-music><span class="label">Music</span><b class="num">' + (M0.playing ? 'Playing' : M0.connected ? 'Paused' : 'Off') + '</b><small>' + App.esc(M0.device ? M0.device.name : 'Spotify') + '</small></button>';
+    }
     var lights = D.devices.filter(function (d) { return d.type === 'light' && d.on; });
     var unlocked = D.devices.filter(function (d) { return d.type === 'lock' && !d.locked; });
     var garage = garageDev();
     var secure = !unlocked.length && garage.state === 'closed';
-    var c = D.climate, m = D.media;
+    var c = D.climate, m = D.music || {};
     return '<button class="sum' + (lights.length ? ' sum--warm' : '') + '" data-sum="lights"><span class="label">Lights</span><b class="num">' + lights.length + '</b><small>on in ' + unique(lights.map(function (l) { return l.room; })).length + ' rooms</small></button>' +
       '<button class="sum' + (secure ? '' : ' sum--warn') + '" data-sum="security"><span class="label">Security</span><b class="num">' + (secure ? 'Locked' : unlocked.length + (garage.state !== 'closed' ? 1 : 0)) + '</b><small>' + (secure ? 'All doors + garage' : (garage.state !== 'closed' ? 'Garage ' + garage.state : '') + (unlocked.length ? (garage.state !== 'closed' ? ' · ' : '') + unlocked.map(function (u) { return u.name; }).join(', ') : '') + (secure ? '' : ' open')) + '</small></button>' +
-      '<button class="sum" data-sum="climate"><span class="label">Climate</span><b class="num">' + c.current + '°</b><small>' + (c.mode === 'off' ? 'System off' : (c.set > c.current ? 'Heating' : c.set < c.current ? 'Cooling' : 'Holding') + ' to ' + c.set + '°') + '</small></button>' +
-      '<button class="sum" data-sum="media"><span class="label">Media</span><b class="num">' + (m.playing ? 'Playing' : 'Paused') + '</b><small>' + App.esc(m.source === 'plex' ? 'Plex · ' + (m.room || '') : (m.room || '') + ' speaker') + '</small></button>';
+      (c.enabled ? '<button class="sum" data-sum="climate"><span class="label">Climate</span><b class="num">' + c.current + '°</b><small>' + (c.mode === 'off' ? 'System off' : (c.set > c.current ? 'Heating' : c.set < c.current ? 'Cooling' : 'Holding') + ' to ' + c.set + '°') + '</small></button>' : '') +
+      '<button class="sum" data-go-music><span class="label">Music</span><b class="num">' + (m.playing ? 'Playing' : m.connected ? 'Paused' : 'Off') + '</b><small>' + App.esc(m.device ? m.device.name : 'Spotify') + '</small></button>';
   }
   function unique(a) { return a.filter(function (x, i) { return a.indexOf(x) === i; }); }
 
@@ -82,6 +87,7 @@
     return on ? on + ' on' : 'All off';
   }
   function rooms() {
+    if (!D.devices.length) return '';
     return D.rooms.map(function (r) {
       var list = D.devices.filter(function (d) { return d.room === r.id; });
       var on = list.filter(function (d) { return d.type === 'light' && d.on; }).length;
@@ -110,12 +116,15 @@
   }
 
   function media() {
-    var m = D.media;
-    var art = m.source === 'plex' ? m.art : App.img(m.seed || 'music', 160, 160);
-    return (art ? '<img class="np-art" src="' + art + '" alt="">' : '<span class="np-art"></span>') +
-      '<div class="np-text"><span class="label">' + App.esc(m.room || '') + '</span><b>' + App.esc(m.title || '') + '</b><span>' + App.esc(m.artist || '') + '</span></div>' +
-      (m.source === 'plex' ? '' : '<button class="np-btn" data-play aria-label="Play/Pause">' + App.icon(m.playing ? 'pause' : 'play', 30) + '</button>');
+    var m = D.music || {};
+    if (!m.connected || !m.title) {
+      return '<span class="np-art"></span><div class="np-text"><span class="label">Music</span><b>' + (m.connected ? 'Nothing playing' : 'Spotify not connected') + '</b><span>Tap to open Music</span></div>';
+    }
+    return '<img class="np-art" src="' + App.esc(m.art || '') + '" alt="">' +
+      '<div class="np-text"><span class="label">' + App.esc(m.device ? m.device.name : 'Spotify') + '</span><b>' + App.esc(m.title) + '</b><span>' + App.esc(m.artist || '') + '</span></div>' +
+      '<button class="np-btn" data-mplay aria-label="Play/Pause">' + App.icon(m.playing ? 'pause' : 'play', 30) + '</button>';
   }
+
 
   // Granular updates: an action repaints only what it touched (full paint() rebuilds ~270 nodes,
   // which costs ~350ms on the wall tablet).
@@ -150,7 +159,10 @@
     rs.innerHTML = rooms();
     rs.scrollTop = st;
     bindTiles(rs);
-    el.querySelector('.hc-climate').innerHTML = climate();
+    var cl = el.querySelector('.hc-climate');
+    cl.style.display = D.climate && D.climate.enabled ? '' : 'none';
+    if (D.climate && D.climate.enabled) cl.innerHTML = climate();
+    el.querySelector('.hc-cams').style.display = D.cameras.length ? '' : 'none';
     el.querySelector('.hc-media').innerHTML = media();
   }
 
@@ -325,7 +337,8 @@
     }
     if ((t = e.target.closest('[data-tmode]'))) { D.climate.mode = t.dataset.tmode; return climateChanged(); }
     if ((t = e.target.closest('[data-cam]'))) return App.cameraSheet(D.cameras.filter(function (c) { return c.id === t.dataset.cam; })[0]);
-    if ((t = e.target.closest('[data-play]'))) { D.media.playing = !D.media.playing; paintPart('.hc-media', media()); paintPart('.hc-sum', summary()); }
+    if ((t = e.target.closest('[data-mplay]'))) { e.stopPropagation(); App.musicCmd((D.music || {}).playing ? 'pause' : 'play'); return; }
+    if (e.target.closest('[data-go-music]') || e.target.closest('.hc-media')) { App.go('music'); }
   }
   function climateChanged() { paintPart('.hc-climate', climate()); paintPart('.hc-sum', summary()); App.emit('data'); }
 
@@ -336,6 +349,11 @@
       App.$$('.cam-age', V.el).forEach(function (a) { a.textContent = V.camAge + 's ago'; });
     }, 1000);
   }
+
+  App.on('live', function (keys) {
+    if (!V.el || keys.indexOf('music') < 0) return;
+    paintPart('.hc-media', media()); paintPart('.hc-sum', summary());
+  });
 
   App.register('control', {
     show: function (el) {

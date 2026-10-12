@@ -1,0 +1,279 @@
+// Outside services for Home HQ: BART departures, walking/driving times, address search,
+// the iCloud shared album, and Spotify. Each one only runs once it has been set up in Admin.
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import path from 'node:path';
+import crypto from 'node:crypto';
+
+const UA = 'HomeHQ/1.0 (family dashboard on a home Mac mini)';
+const j = async (url, opts = {}) => {
+  const r = await fetch(url, Object.assign({ signal: AbortSignal.timeout(opts.timeout || 10000) }, opts, { headers: Object.assign({ 'User-Agent': UA }, opts.headers || {}) }));
+  if (!r.ok) { const e = new Error(url.split('?')[0] + ' returned ' + r.status); e.status = r.status; e.body = await r.text().catch(() => ''); throw e; }
+  return r.json();
+};
+
+export function createIntegrations(ctx) {
+  const { getState, commit, secrets, saveSecrets, log, dataDir, photosDir } = ctx;
+  const S = () => getState();
+
+  // ---------------------------------------------------------------- places + routing (OpenStreetMap)
+  const BART_STATIONS = [
+    { code: 'PLZA', name: 'El Cerrito Plaza', lat: 37.902632, lon: -122.298904 },
+    { code: 'DELN', name: 'El Cerrito del Norte', lat: 37.925086, lon: -122.316794 }
+  ];
+  let lastGeo = 0;
+  async function geocode(q, near) {
+    // Nominatim asks for at most one request a second.
+    const wait = 1100 - (Date.now() - lastGeo); if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    lastGeo = Date.now();
+    let url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&q=' + encodeURIComponent(q);
+    if (near && near.lat != null) {
+      const d = 0.6; url += '&viewbox=' + [near.lon - d, near.lat + d, near.lon + d, near.lat - d].join(',');
+    }
+    const res = await j(url, { headers: { 'Accept-Language': 'en' } });
+    return res.map(x => ({ name: x.name || x.display_name.split(',')[0], label: x.display_name, lat: +x.lat, lon: +x.lon }));
+  }
+  const MI = 1609.344;
+  async function route(from, to, mode) {
+    const base = mode === 'walk' ? 'https://routing.openstreetmap.de/routed-foot/route/v1/driving/' : 'https://router.project-osrm.org/route/v1/driving/';
+    const url = base + from.lon + ',' + from.lat + ';' + to.lon + ',' + to.lat + '?overview=simplified&geometries=geojson';
+    const r = await j(url, { timeout: 12000 });
+    const rt = r.routes && r.routes[0];
+    if (!rt) throw new Error('No route');
+    return { min: Math.max(1, Math.round(rt.duration / 60)), mi: Math.round(rt.distance / MI * 10) / 10, line: rt.geometry.coordinates.map(c => [c[1], c[0]]) };
+  }
+  async function routeBoth(from, to) {
+    const [walk, drive] = await Promise.all([route(from, to, 'walk').catch(e => ({ error: e.message })), route(from, to, 'drive').catch(e => ({ error: e.message }))]);
+    return { walk, drive };
+  }
+  async function refreshCommute() {
+    const st = S().settings || {};
+    if (st.lat == null) return;
+    const home = { lat: st.lat, lon: st.lon };
+    const stations = [];
+    for (const s of BART_STATIONS) {
+      const r = await routeBoth(home, s);
+      stations.push(Object.assign({}, s, { walk: r.walk.error ? null : { min: r.walk.min, mi: r.walk.mi }, drive: r.drive.error ? null : { min: r.drive.min, mi: r.drive.mi } }));
+    }
+    commit({ commute: { from: st.address || st.place, stations, updated: new Date().toISOString() } }, 'server');
+  }
+
+  // ---------------------------------------------------------------- BART departures (legacy API, public key)
+  let bartTimer = null;
+  async function refreshBart() {
+    const key = secrets.bartKey || 'MW9S-E7SL-26DU-VV8V';
+    const out = { updated: new Date().toISOString(), stations: [] };
+    try {
+      for (const s of BART_STATIONS) {
+        const r = await j('https://api.bart.gov/api/etd.aspx?cmd=etd&json=y&key=' + key + '&orig=' + s.code);
+        const stn = (r.root && r.root.station && r.root.station[0]) || {};
+        const lines = (stn.etd || []).map(e => ({
+          dest: e.destination, abbr: e.abbreviation,
+          color: (e.estimate[0] && e.estimate[0].hexcolor) || '#888888',
+          dir: e.estimate[0] && e.estimate[0].direction,
+          mins: e.estimate.map(x => x.minutes === 'Leaving' ? 0 : +x.minutes).filter(n => !isNaN(n)),
+          cars: e.estimate[0] && +e.estimate[0].length,
+          delay: e.estimate.some(x => +x.delay > 0)
+        })).sort((a, b) => (a.mins[0] ?? 99) - (b.mins[0] ?? 99));
+        out.stations.push({ code: s.code, name: s.name, lines });
+      }
+      const msg = await j('https://api.bart.gov/api/bsa.aspx?cmd=bsa&json=y&key=' + key).catch(() => null);
+      const adv = msg && msg.root && msg.root.bsa && msg.root.bsa[0];
+      out.advisory = adv && adv.description && adv.description['#cdata-section'] && !/No delays reported/i.test(adv.description['#cdata-section']) ? adv.description['#cdata-section'] : '';
+    } catch (e) { out.error = 'BART times unavailable'; log('bart:', e.message); }
+    commit({ bart: out }, 'server');
+  }
+  function startBart() { refreshBart(); clearInterval(bartTimer); bartTimer = setInterval(refreshBart, 30000); }
+
+  // ---------------------------------------------------------------- iCloud shared album (public website link)
+  const B62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+  function albumToken(link) { const m = String(link || '').match(/#([A-Za-z0-9]+)/); return m ? m[1] : null; }
+  function albumBase(token) {
+    const part = token[0] === 'A' ? B62.indexOf(token[1]) : B62.indexOf(token[1]) * 62 + B62.indexOf(token[2]);
+    return 'https://p' + String(part).padStart(2, '0') + '-sharedstreams.icloud.com/' + token + '/sharedstreams/';
+  }
+  async function icloudPost(base, endpoint, body, token) {
+    const r = await fetch(base + endpoint, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'text/plain', 'User-Agent': UA, Origin: 'https://www.icloud.com' }, signal: AbortSignal.timeout(20000) });
+    if (r.status === 330) {
+      const host = (await r.json())['X-Apple-MMe-Host'];
+      return icloudPost('https://' + host + '/' + token + '/sharedstreams/', endpoint, body, token);
+    }
+    if (!r.ok) throw new Error('iCloud returned ' + r.status + (r.status === 404 ? ' (is Public Website turned on?)' : ''));
+    return { json: await r.json(), base };
+  }
+  let albumStatus = { ok: false, note: 'Not set up' }, albumBusy = false;
+  async function syncAlbum() {
+    const token = albumToken(secrets.icloudAlbum);
+    if (!token || albumBusy) return albumStatus;
+    albumBusy = true;
+    const dir = path.join(photosDir, 'icloud');
+    fs.mkdirSync(dir, { recursive: true });
+    try {
+      const first = await icloudPost(albumBase(token), 'webstream', { streamCtag: null }, token);
+      const stream = first.json, base = first.base;
+      const items = (stream.photos || []).filter(p => p.mediaAssetType !== 'video');
+      // Pick the largest still image up to ~2000px per photo.
+      const picks = items.map(p => {
+        const ds = Object.values(p.derivatives || {}).filter(d => d.checksum && +d.width > 0)
+          .sort((a, b) => (+b.width) - (+a.width));
+        const d = ds.find(x => +x.width <= 2100 && +x.height <= 2100) || ds[ds.length - 1];
+        return d ? { p, d } : null;
+      }).filter(Boolean);
+      const have = new Set(fs.readdirSync(dir));
+      const need = picks.filter(x => !have.has(x.p.photoGuid + '.jpg'));
+      for (let i = 0; i < need.length; i += 25) {
+        const batch = need.slice(i, i + 25);
+        const urls = (await icloudPost(base, 'webasseturls', { photoGuids: batch.map(x => x.p.photoGuid) }, token)).json.items || {};
+        for (const { p, d } of batch) {
+          const u = urls[d.checksum]; if (!u) continue;
+          const r = await fetch('https://' + u.url_location + u.url_path, { signal: AbortSignal.timeout(30000) });
+          if (r.ok) await fsp.writeFile(path.join(dir, p.photoGuid + '.jpg'), Buffer.from(await r.arrayBuffer()));
+        }
+      }
+      // Drop files for photos that were removed from the album.
+      const keep = new Set(picks.map(x => x.p.photoGuid + '.jpg'));
+      for (const f of fs.readdirSync(dir)) if (!keep.has(f)) fs.rmSync(path.join(dir, f), { force: true });
+      const own = (S().photos || []).filter(x => x.src && !x.src.startsWith('/photos/icloud/'));
+      const old = Object.fromEntries((S().photos || []).filter(x => x.icloud).map(x => [x.id, x]));
+      const album = picks.filter(x => fs.existsSync(path.join(dir, x.p.photoGuid + '.jpg'))).map(({ p, d }) => {
+        const dt = new Date(p.dateCreated || p.batchDateCreated || Date.now());
+        const id = 'ic-' + p.photoGuid;
+        return { id, icloud: true, src: '/photos/icloud/' + p.photoGuid + '.jpg', o: +d.height > +d.width ? 'p' : 'l',
+          date: dt.toISOString().slice(0, 10), place: p.caption || stream.streamName || 'Shared album', from: 'family',
+          tag: (p.batchGuid || id), fav: !!(old[id] && old[id].fav) };
+      });
+      commit({ photos: own.concat(album) }, 'server');
+      albumStatus = { ok: true, name: stream.streamName, count: album.length, checked: new Date().toISOString() };
+    } catch (e) { albumStatus = { ok: false, error: e.message, checked: new Date().toISOString() }; log('icloud:', e.message); }
+    albumBusy = false;
+    return albumStatus;
+  }
+
+  // ---------------------------------------------------------------- Spotify
+  const SP = () => (secrets.spotify = secrets.spotify || {});
+  const SCOPES = 'user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private user-read-recently-played user-library-read';
+  let spState = { connected: false }, spStatus = { ok: false, note: 'Not set up' };
+  function spotifyAuthUrl(redirect) {
+    const sp = SP(); sp.oauthState = crypto.randomBytes(12).toString('hex'); sp.redirect = redirect; saveSecrets();
+    return 'https://accounts.spotify.com/authorize?' + new URLSearchParams({ response_type: 'code', client_id: sp.clientId, scope: SCOPES, redirect_uri: redirect, state: sp.oauthState });
+  }
+  async function spotifyToken(params) {
+    const sp = SP();
+    const r = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST', body: new URLSearchParams(params), signal: AbortSignal.timeout(10000),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: 'Basic ' + Buffer.from(sp.clientId + ':' + sp.clientSecret).toString('base64') }
+    });
+    const t = await r.json();
+    if (!r.ok) throw new Error(t.error_description || t.error || 'Spotify token error');
+    sp.accessToken = t.access_token; sp.exp = Date.now() + (t.expires_in - 60) * 1000;
+    if (t.refresh_token) sp.refreshToken = t.refresh_token;
+    saveSecrets();
+  }
+  async function spotifyCallback(code, state) {
+    const sp = SP();
+    if (!state || state !== sp.oauthState) throw new Error('Sign-in expired. Try Connect Spotify again.');
+    await spotifyToken({ grant_type: 'authorization_code', code, redirect_uri: sp.redirect });
+    delete sp.oauthState; saveSecrets();
+    startSpotify();
+  }
+  async function sp(method, p, body) {
+    const s = SP();
+    if (!s.refreshToken) throw new Error('Spotify is not connected');
+    if (!s.accessToken || Date.now() > s.exp) await spotifyToken({ grant_type: 'refresh_token', refresh_token: s.refreshToken });
+    const r = await fetch('https://api.spotify.com/v1' + p, {
+      method, signal: AbortSignal.timeout(10000),
+      headers: Object.assign({ Authorization: 'Bearer ' + s.accessToken }, body ? { 'Content-Type': 'application/json' } : {}),
+      body: body ? JSON.stringify(body) : undefined
+    });
+    if (r.status === 204 || r.status === 202) return null;
+    const t = await r.text(); let js = null; try { js = t ? JSON.parse(t) : null; } catch {}
+    if (!r.ok) {
+      const msg = (js && js.error && (js.error.message || js.error.reason)) || ('Spotify ' + r.status);
+      throw Object.assign(new Error(/premium/i.test(msg) || (js && js.error && js.error.reason === 'PREMIUM_REQUIRED') ? 'Spotify Premium is needed to control playback' : msg), { status: r.status });
+    }
+    return js;
+  }
+  const img = (images, w) => { if (!images || !images.length) return ''; const s = images.slice().sort((a, b) => (a.width || 0) - (b.width || 0)); return (s.find(i => (i.width || 0) >= w) || s[s.length - 1]).url; };
+  let devicesAt = 0, devices = [];
+  async function refreshSpotify() {
+    if (!SP().refreshToken) return;
+    try {
+      const p = await sp('GET', '/me/player?additional_types=episode');
+      if (Date.now() - devicesAt > 30000) { devices = ((await sp('GET', '/me/player/devices')) || {}).devices || []; devicesAt = Date.now(); }
+      const it = p && p.item;
+      const next = {
+        connected: true, playing: !!(p && p.is_playing),
+        title: it ? it.name : '', artist: it ? (it.artists ? it.artists.map(a => a.name).join(', ') : (it.show && it.show.name) || '') : '',
+        album: it && it.album ? it.album.name : '', art: it ? img((it.album && it.album.images) || it.images, 300) : '',
+        uri: it ? it.uri : '', progress: p ? p.progress_ms : 0, duration: it ? it.duration_ms : 0, at: Date.now(),
+        shuffle: !!(p && p.shuffle_state), repeat: p ? p.repeat_state : 'off',
+        device: p && p.device ? { id: p.device.id, name: p.device.name, type: p.device.type, volume: p.device.volume_percent } : null,
+        devices: devices.map(d => ({ id: d.id, name: d.name, type: d.type, active: d.is_active, volume: d.volume_percent, restricted: d.is_restricted }))
+      };
+      spStatus = { ok: true, checked: new Date().toISOString() };
+      const cmp = o => JSON.stringify(Object.assign({}, o, { progress: 0, at: 0 }));
+      // Push when something visible changed, and every 30 s to keep progress bars honest.
+      if (cmp(next) !== cmp(spState) || Date.now() - (spState.at || 0) > 30000) { spState = next; commit({ music: next }, 'server'); }
+    } catch (e) { spStatus = { ok: false, error: e.message, checked: new Date().toISOString() }; if (e.status !== 429) log('spotify:', e.message); }
+  }
+  let spTimer = null;
+  function startSpotify() { if (!SP().refreshToken) return; refreshSpotify(); clearInterval(spTimer); spTimer = setInterval(refreshSpotify, 5000); }
+  async function spotifyCommand(b) {
+    const dev = b.device ? '?device_id=' + encodeURIComponent(b.device) : '';
+    switch (b.action) {
+      case 'play': await sp('PUT', '/me/player/play' + dev, b.uri ? (/:track:/.test(b.uri) ? { uris: [b.uri] } : { context_uri: b.uri }) : undefined); break;
+      case 'pause': await sp('PUT', '/me/player/pause'); break;
+      case 'next': await sp('POST', '/me/player/next'); break;
+      case 'prev': await sp('POST', '/me/player/previous'); break;
+      case 'volume': await sp('PUT', '/me/player/volume?volume_percent=' + Math.max(0, Math.min(100, Math.round(+b.volume)))); break;
+      case 'shuffle': await sp('PUT', '/me/player/shuffle?state=' + (b.on ? 'true' : 'false')); break;
+      case 'transfer': await sp('PUT', '/me/player', { device_ids: [b.device], play: b.play !== false }); devicesAt = 0; break;
+      default: throw new Error('Unknown music action');
+    }
+    setTimeout(refreshSpotify, 400);
+    return { ok: true };
+  }
+  let libCache = { at: 0, data: null };
+  async function spotifyLibrary() {
+    if (libCache.data && Date.now() - libCache.at < 10 * 60000) return libCache.data;
+    const [pl, recent] = await Promise.all([sp('GET', '/me/playlists?limit=24'), sp('GET', '/me/player/recently-played?limit=30').catch(() => null)]);
+    const seen = new Set(), recents = [];
+    for (const r of (recent && recent.items) || []) {
+      const c = r.context;
+      if (c && (c.type === 'playlist' || c.type === 'album') && !seen.has(c.uri)) { seen.add(c.uri); recents.push(c.uri); }
+    }
+    const data = {
+      playlists: ((pl && pl.items) || []).filter(Boolean).map(p => ({ uri: p.uri, name: p.name, by: p.owner && p.owner.display_name, art: img(p.images, 300), tracks: p.tracks && p.tracks.total })),
+      recentTracks: ((recent && recent.items) || []).slice(0, 12).map(r => ({ uri: r.track.uri, name: r.track.name, by: r.track.artists.map(a => a.name).join(', '), art: img(r.track.album.images, 120) }))
+        .filter((t, i, a) => a.findIndex(x => x.uri === t.uri) === i).slice(0, 8)
+    };
+    libCache = { at: Date.now(), data };
+    return data;
+  }
+  async function spotifySearch(q) {
+    const r = await sp('GET', '/search?type=track,playlist,album,artist&limit=6&q=' + encodeURIComponent(q));
+    const pick = (list, f) => ((list && list.items) || []).filter(Boolean).map(f);
+    return {
+      tracks: pick(r.tracks, t => ({ uri: t.uri, name: t.name, by: t.artists.map(a => a.name).join(', '), art: img(t.album.images, 120) })),
+      playlists: pick(r.playlists, p => ({ uri: p.uri, name: p.name, by: p.owner && p.owner.display_name, art: img(p.images, 300) })),
+      albums: pick(r.albums, a => ({ uri: a.uri, name: a.name, by: a.artists.map(x => x.name).join(', '), art: img(a.images, 300) })),
+      artists: pick(r.artists, a => ({ uri: a.uri, name: a.name, by: 'Artist', art: img(a.images, 300) }))
+    };
+  }
+
+  // ---------------------------------------------------------------- start
+  function start() {
+    startBart();
+    refreshCommute().catch(e => log('commute:', e.message));
+    setInterval(() => refreshCommute().catch(() => {}), 24 * 3600e3);
+    syncAlbum(); setInterval(syncAlbum, 20 * 60000);
+    startSpotify();
+  }
+
+  return {
+    start, geocode, routeBoth, refreshCommute, refreshBart, syncAlbum, albumStatus: () => albumStatus, albumToken,
+    spotifyAuthUrl, spotifyCallback, spotifyCommand, spotifyLibrary, spotifySearch, spotifyStatus: () => spStatus,
+    spotifyDisconnect() { secrets.spotify = { clientId: SP().clientId, clientSecret: SP().clientSecret }; saveSecrets(); clearInterval(spTimer); spState = { connected: false }; commit({ music: { connected: false } }, 'server'); },
+    BART_STATIONS
+  };
+}

@@ -10,6 +10,7 @@ import crypto from 'node:crypto';
 import vm from 'node:vm';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createIntegrations } from './integrations.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -36,7 +37,8 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 // Keys the wall display / any screen on the home network may change (day-to-day use).
 const OPEN_KEYS = ['chores', 'stars', 'week', 'groceries', 'events', 'devices', 'climate'];
 // Keys only an admin (or the agent token) may change.
-const ADMIN_KEYS = ['people', 'family', 'routines', 'stores', 'catOrder', 'catalog', 'usuals', 'rooms',
+const LIVE_KEYS = ['bart', 'music'];   // refreshed constantly by the server, not saved
+const ADMIN_KEYS = ['commute', 'bart', 'music', 'people', 'family', 'routines', 'stores', 'catOrder', 'catalog', 'usuals', 'rooms',
   'scenes', 'cameras', 'photos', 'agents', 'media', 'weather', 'settings'];
 const ALL_KEYS = OPEN_KEYS.concat(ADMIN_KEYS);
 const DEVICE_STATE_FIELDS = ['on', 'level', 'pos', 'locked', 'state'];
@@ -54,14 +56,22 @@ function demoState() {
   return out;
 }
 function defaultSettings() {
-  return { title: 'Home HQ', units: 'fahrenheit', place: '', lat: null, lon: null, demo: true, hiddenViews: [] };
+  return { title: 'Home HQ', units: 'fahrenheit', place: '', address: '', lat: null, lon: null, demo: true, hiddenViews: [], schema: 2 };
 }
 function blankState() {
+  // Everything empty except generic helpers (routines, aisle order, the grocery catalogue).
   const s = demoState();
-  s.events = []; s.chores = []; s.groceries = []; s.photos = [];
-  s.stars = {}; s.week = {};
-  s.people = [{ id: 'me', name: 'Me', color: '#2D5BFF', rgb: '45 91 255', ink: '#FFFFFF', home: true, status: 'Home' }];
-  s.settings = Object.assign(defaultSettings(), s.settings || {}, { demo: false });
+  Object.assign(s, {
+    people: [], events: [], chores: [], groceries: [], photos: [], stars: {}, week: {}, agents: [],
+    rooms: [], devices: [], scenes: [], cameras: [],
+    stores: [{ id: 'store', name: 'Groceries' }],
+    climate: { enabled: false, current: 20, set: 20, mode: 'off', humidity: 0, outside: null },
+    media: { source: 'none', room: '', title: '', artist: '', playing: false },
+    weather: { t: [], c: [], p: [], live: false },
+    music: { connected: false }, bart: null, commute: null
+  });
+  s.catOrder = { all: s.catOrder.all, store: s.catOrder.all.slice() };
+  s.settings = Object.assign(defaultSettings(), { demo: false, hiddenViews: ['calendar', 'tasks', 'agents'] });
   return s;
 }
 
@@ -76,14 +86,25 @@ try {
   log('No saved state yet: seeded with the demo household. Edit or clear it from /admin.');
   saveSoon();
 }
+const savedSchema = (state.settings && state.settings.schema) || 1;
 state.settings = Object.assign(defaultSettings(), state.settings || {});
+if (savedSchema < 2) {
+  // v2: the dashboard no longer ships with a pretend family. Keep real uploads and settings.
+  const keepPhotos = (state.photos || []).filter(x => x.src);
+  const keep = { title: state.settings.title, units: state.settings.units, place: state.settings.place, lat: state.settings.lat, lon: state.settings.lon, address: state.settings.address || '' };
+  if (state.settings.demo !== false) { state = blankState(); state.photos = keepPhotos; }
+  state.settings = Object.assign(defaultSettings(), state.settings, keep, { schema: 2, demo: false, hiddenViews: ['calendar', 'tasks', 'agents'] });
+  log('Updated saved data to schema 2 (demo household removed)');
+  saveSoon();
+}
 
 function saveSoon() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(save, 400);
 }
 function save() {
-  const json = JSON.stringify({ rev, savedAt: new Date().toISOString(), state }, null, 1);
+  const persist = Object.assign({}, state); LIVE_KEYS.forEach(k => delete persist[k]);
+  const json = JSON.stringify({ rev, savedAt: new Date().toISOString(), state: persist }, null, 1);
   const tmp = STATE_FILE + '.tmp';
   fs.writeFileSync(tmp, json);
   fs.renameSync(tmp, STATE_FILE);
@@ -180,6 +201,8 @@ function commit(patch, client) {
   broadcast({ type: 'patch', rev, patch, client: client || null });
   return rev;
 }
+
+const X = createIntegrations({ getState: () => state, commit, secrets, saveSecrets: () => saveSecrets(), log, dataDir: DATA, photosDir: PHOTOS });
 
 // ------------------------------------------------------------------ HomeKit via Shortcuts
 // Each device / scene can name a Shortcut. We run it with a text input:
@@ -384,6 +407,45 @@ async function api(req, res, url) {
     return;
   }
 
+  // ---------------------------------------------------------------- map + music (home network or admin)
+  if (p.startsWith('/api/geo/') || p.startsWith('/api/music')) {
+    if (!admin && !home) return send(res, 403, { error: 'Sign in at /admin to use this from outside the house' });
+    const st = state.settings;
+    if (p === '/api/geo/search') {
+      try { return send(res, 200, await X.geocode(url.searchParams.get('q') || '', st.lat != null ? { lat: st.lat, lon: st.lon } : null)); }
+      catch (e) { return send(res, 502, { error: e.message }); }
+    }
+    if (p === '/api/geo/route') {
+      if (st.lat == null) return send(res, 400, { error: 'Set your home address in Admin → Settings first' });
+      const to = { lat: +url.searchParams.get('lat'), lon: +url.searchParams.get('lon') };
+      if (isNaN(to.lat) || isNaN(to.lon)) return send(res, 400, { error: 'lat and lon required' });
+      return send(res, 200, Object.assign({ from: { lat: st.lat, lon: st.lon } }, await X.routeBoth({ lat: st.lat, lon: st.lon }, to)));
+    }
+    try {
+      if (p === '/api/music' && m === 'POST') return send(res, 200, await X.spotifyCommand(await readBody(req)));
+      if (p === '/api/music/library') return send(res, 200, await X.spotifyLibrary());
+      if (p === '/api/music/search') return send(res, 200, await X.spotifySearch(url.searchParams.get('q') || ''));
+    } catch (e) { return send(res, e.status === 401 ? 401 : 502, { error: e.message }); }
+    return send(res, 404, { error: 'Not found' });
+  }
+
+  // ---------------------------------------------------------------- Spotify sign-in (admin)
+  if (p === '/api/spotify/login') {
+    if (needAdmin()) return;
+    const sp = secrets.spotify || {};
+    if (!sp.clientId || !sp.clientSecret) return send(res, 400, 'Add your Spotify Client ID and Secret in Admin → Music first.');
+    const redirect = spotifyRedirect(req);
+    res.writeHead(302, { Location: X.spotifyAuthUrl(redirect) }); return res.end();
+  }
+  if (p === '/api/spotify/callback') {
+    if (needAdmin()) return;
+    try {
+      if (url.searchParams.get('error')) throw new Error(url.searchParams.get('error'));
+      await X.spotifyCallback(url.searchParams.get('code'), url.searchParams.get('state'));
+      res.writeHead(302, { Location: '/admin#music' }); return res.end();
+    } catch (e) { return send(res, 400, 'Spotify sign-in failed: ' + e.message + '\n\nGo back to Admin → Music and try again.'); }
+  }
+
   if (p === '/api/state' && m === 'PATCH') {
     const body = await readBody(req);
     const patch = body.patch || {};
@@ -443,6 +505,8 @@ async function api(req, res, url) {
     if (sub === 'config' && m === 'GET') {
       return send(res, 200, {
         settings: state.settings, plex: { url: secrets.plex.url, hasToken: !!secrets.plex.token, status: plexStatus },
+        icloud: { set: !!secrets.icloudAlbum, status: X.albumStatus() },
+        spotify: { clientId: (secrets.spotify || {}).clientId || '', hasSecret: !!(secrets.spotify || {}).clientSecret, connected: !!(secrets.spotify || {}).refreshToken, status: X.spotifyStatus(), redirect: spotifyRedirect(req) },
         apiToken: secrets.apiToken, isMac: IS_MAC, hostname: os.hostname(), port: PORT,
         addresses: Object.values(os.networkInterfaces()).flat().filter(a => a && a.family === 'IPv4' && !a.internal).map(a => a.address),
         shortcutLog, sessions: Object.keys(secrets.sessions).length, rev
@@ -458,6 +522,34 @@ async function api(req, res, url) {
       if (b.settings) { commit({ settings: Object.assign({}, state.settings, b.settings) }, 'admin'); refreshWeather(); }
       return send(res, 200, { ok: true });
     }
+    if (sub === 'address-search' && m === 'GET') {
+      try { return send(res, 200, await X.geocode(url.searchParams.get('q') || '')); } catch (e) { return send(res, 502, { error: e.message }); }
+    }
+    if (sub === 'address' && m === 'POST') {
+      const b = await readBody(req);
+      if (typeof b.lat !== 'number' || typeof b.lon !== 'number') return send(res, 400, { error: 'Pick an address from the search results' });
+      const city = String(b.label || '').split(',').map(x => x.trim());
+      commit({ settings: Object.assign({}, state.settings, { address: String(b.label || '').slice(0, 200), lat: b.lat, lon: b.lon, place: b.place || city[2] || city[1] || city[0] || '' }) }, 'admin');
+      await Promise.all([refreshWeather(), X.refreshCommute().catch(e => log('commute:', e.message))]);
+      return send(res, 200, { ok: true, commute: state.commute });
+    }
+    if (sub === 'icloud' && m === 'POST') {
+      const b = await readBody(req);
+      if (b.url && !X.albumToken(b.url)) return send(res, 400, { error: 'That doesn’t look like an iCloud shared album link (https://www.icloud.com/sharedalbum/#…)' });
+      if (b.sync && !b.url) return send(res, 200, await X.syncAlbum());
+      secrets.icloudAlbum = b.url || ''; saveSecrets();
+      if (!b.url) { commit({ photos: (state.photos || []).filter(x => !x.icloud) }, 'admin'); return send(res, 200, { ok: true }); }
+      return send(res, 200, await X.syncAlbum());
+    }
+    if (sub === 'spotify' && m === 'POST') {
+      const b = await readBody(req);
+      secrets.spotify = secrets.spotify || {};
+      if (b.clientId != null) secrets.spotify.clientId = String(b.clientId).trim();
+      if (b.clientSecret) secrets.spotify.clientSecret = String(b.clientSecret).trim();
+      if (b.disconnect) X.spotifyDisconnect();
+      saveSecrets(); return send(res, 200, { ok: true });
+    }
+    if (sub === 'bart/refresh' && m === 'POST') { await X.refreshBart(); return send(res, 200, state.bart); }
     if (sub === 'geocode' && m === 'GET') {
       const q = url.searchParams.get('q') || '';
       try {
@@ -579,6 +671,15 @@ async function api(req, res, url) {
   }
   return send(res, 404, { error: 'Not found' });
 }
+// Spotify only accepts https redirect URIs, or http on 127.0.0.1. Use whatever address the admin
+// is open on (admin.sabadorks.com through Cloudflare is https).
+function spotifyRedirect(req) {
+  let proto = 'http';
+  try { proto = JSON.parse(req.headers['cf-visitor'] || '{}').scheme || req.headers['x-forwarded-proto'] || 'http'; } catch {}
+  let host = String(req.headers.host || 'localhost:' + PORT);
+  if (proto === 'http' && /^localhost(:|$)/.test(host)) host = host.replace(/^localhost/, '127.0.0.1');
+  return proto + '://' + host + '/api/spotify/callback';
+}
 function pick(o, keys) { const out = {}; keys.forEach(k => { if (o[k] !== undefined) out[k] = o[k]; }); return out; }
 
 const server = http.createServer(async (req, res) => {
@@ -637,5 +738,5 @@ server.listen(PORT, HOST, () => {
   log('  Dashboard:  http://' + os.hostname().replace(/\.local$/, '') + '.local:' + PORT + '/');
   addrs.forEach(a => log('              http://' + a + ':' + PORT + '/'));
   log('  Admin:      /admin');
-  refreshWeather(); refreshPlex();
+  refreshWeather(); refreshPlex(); X.start();
 });
