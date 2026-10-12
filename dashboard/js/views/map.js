@@ -10,7 +10,7 @@
 
   function home() { var s = D.settings || {}; return s.lat != null ? { lat: s.lat, lon: s.lon, label: s.address } : null; }
   function get(url) {
-    return fetch(url, { cache: 'no-store' }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status); return j; }); });
+    return fetch(url, { cache: 'no-store' }).then(function (r) { return r.text().then(function (t) { var j = {}; try { j = JSON.parse(t); } catch (e) {} if (!r.ok) throw new Error(j.error || 'Couldn’t reach the Mac mini'); return j; }); });
   }
   function pin(cls, html) {
     return window.L.divIcon({ className: 'mp-pin ' + cls, html: '<i>' + (html || '') + '</i>', iconSize: [34, 34], iconAnchor: [17, 34] });

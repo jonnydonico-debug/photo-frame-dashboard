@@ -11,7 +11,7 @@
     if (action === 'play' && !extra) { M.playing = true; M.at = Date.now(); App.emit('live', ['music']); }
     if (action === 'pause') { M.progress = M.progress + (Date.now() - (M.at || Date.now())); M.at = Date.now(); M.playing = false; App.emit('live', ['music']); }
     return fetch('/api/music', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-HQ': '1' }, body: JSON.stringify(body) })
-      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'Spotify didn’t respond'); return j; }); })
+      .then(function (r) { return r.text().then(function (t) { var j = {}; try { j = JSON.parse(t); } catch (e) {} if (!r.ok) throw new Error(j.error || 'Spotify didn’t respond'); return j; }); })
       .catch(function (e) {
         var msg = /no active device|NO_ACTIVE_DEVICE|404/i.test(e.message) ? 'Pick a speaker first' : e.message;
         App.toast(App.esc(msg), { tone: 'error', icon: 'music', ms: 3500 });
@@ -20,7 +20,7 @@
   };
 
   function get(url) {
-    return fetch(url, { cache: 'no-store' }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status); return j; }); });
+    return fetch(url, { cache: 'no-store' }).then(function (r) { return r.text().then(function (t) { var j = {}; try { j = JSON.parse(t); } catch (e) {} if (!r.ok) throw new Error(j.error || 'Couldn’t reach the Mac mini'); return j; }); });
   }
 
   // ------------------------------------------------------------ parts

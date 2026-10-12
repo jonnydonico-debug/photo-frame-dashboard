@@ -413,7 +413,7 @@ async function api(req, res, url) {
     const st = state.settings;
     if (p === '/api/geo/search') {
       try { return send(res, 200, await X.geocode(url.searchParams.get('q') || '', st.lat != null ? { lat: st.lat, lon: st.lon } : null)); }
-      catch (e) { return send(res, 502, { error: e.message }); }
+      catch (e) { return send(res, 409, { error: e.message }); }
     }
     if (p === '/api/geo/route') {
       if (st.lat == null) return send(res, 400, { error: 'Set your home address in Admin → Settings first' });
@@ -425,7 +425,7 @@ async function api(req, res, url) {
       if (p === '/api/music' && m === 'POST') return send(res, 200, await X.spotifyCommand(await readBody(req)));
       if (p === '/api/music/library') return send(res, 200, await X.spotifyLibrary());
       if (p === '/api/music/search') return send(res, 200, await X.spotifySearch(url.searchParams.get('q') || ''));
-    } catch (e) { return send(res, e.status === 401 ? 401 : 502, { error: e.message }); }
+    } catch (e) { return send(res, e.status === 401 ? 401 : 409, { error: e.message }); }
     return send(res, 404, { error: 'Not found' });
   }
 
@@ -523,7 +523,7 @@ async function api(req, res, url) {
       return send(res, 200, { ok: true });
     }
     if (sub === 'address-search' && m === 'GET') {
-      try { return send(res, 200, await X.geocode(url.searchParams.get('q') || '')); } catch (e) { return send(res, 502, { error: e.message }); }
+      try { return send(res, 200, await X.geocode(url.searchParams.get('q') || '')); } catch (e) { return send(res, 409, { error: e.message }); }
     }
     if (sub === 'address' && m === 'POST') {
       const b = await readBody(req);
@@ -560,7 +560,7 @@ async function api(req, res, url) {
         const r = await fetch('https://geocoding-api.open-meteo.com/v1/search?count=6&name=' + encodeURIComponent(q), { signal: AbortSignal.timeout(8000) });
         const j = await r.json();
         return send(res, 200, (j.results || []).map(x => ({ name: [x.name, x.admin1, x.country_code].filter(Boolean).join(', '), lat: x.latitude, lon: x.longitude })));
-      } catch (e) { return send(res, 502, { error: e.message }); }
+      } catch (e) { return send(res, 409, { error: e.message }); }
     }
     if (sub === 'weather/refresh' && m === 'POST') { await refreshWeather(); return send(res, 200, { weather: state.weather }); }
     if (sub === 'shortcuts' && m === 'GET') return send(res, 200, { isMac: IS_MAC, shortcuts: await listShortcuts() });
