@@ -429,9 +429,16 @@ export function createIntegrations(ctx) {
         tracks: a.tracks.items.map(x => Object.assign(t(x), { art: '' })), playAs: 'context' };
     }
     if (kind === 'playlist') {
-      const p = await sp('GET', '/playlists/' + id + '?fields=' + encodeURIComponent('name,owner(display_name),images,tracks(total,items(track(uri,name,duration_ms,artists(name),album(images))))'));
-      return { kind, uri, name: p.name, by: (p.owner && p.owner.display_name || '') + ' · ' + (p.tracks ? p.tracks.total : 0) + ' songs', art: img(p.images, 300),
-        tracks: ((p.tracks && p.tracks.items) || []).map(i => i.track).filter(x => x && x.uri && /:track:/.test(x.uri)).map(t), playAs: 'context' };
+      // Spotify renamed playlist "tracks" to "items" in 2025; handle both.
+      const p = await sp('GET', '/playlists/' + id);
+      let rows = (p.items && p.items.items) || (p.tracks && p.tracks.items) || [];
+      if (!rows.length) {
+        const r = await sp('GET', '/playlists/' + id + '/items?limit=100').catch(() => sp('GET', '/playlists/' + id + '/tracks?limit=100').catch(() => null));
+        rows = (r && r.items) || [];
+      }
+      const total = (p.items && p.items.total) || (p.tracks && p.tracks.total) || rows.length;
+      return { kind, uri, name: p.name, by: (p.owner && p.owner.display_name || '') + ' · ' + total + ' songs', art: img(p.images, 300),
+        tracks: rows.map(i => i.item || i.track).filter(x => x && x.uri && /:track:/.test(x.uri)).map(t), playAs: 'context' };
     }
     const [a, top, albums] = await Promise.all([sp('GET', '/artists/' + id), sp('GET', '/artists/' + id + '/top-tracks?market=from_token').catch(() => null),
       sp('GET', '/artists/' + id + '/albums?include_groups=album,single&limit=12').catch(() => null)]);

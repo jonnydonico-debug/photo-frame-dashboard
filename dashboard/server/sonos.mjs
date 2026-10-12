@@ -99,7 +99,7 @@ export function createSonos({ log }) {
   // Sonos plays Spotify itself (through the Spotify account linked in the Sonos app). We need that
   // account's numbers (sid/sn) and region descriptor, which we read from a Sonos favourite or from
   // whatever Spotify track the room last played.
-  let account = null;
+  let account = null, lastSeen = [];
   async function spotifyAccount(room) {
     if (account) return account;
     const found = [];
@@ -110,10 +110,14 @@ export function createSonos({ log }) {
     try { found.push(unescapeXml(unescapeXml(await soap(room.coordinatorHost, 'transport', 'GetPositionInfo', { InstanceID: 0 })))); } catch {}
     try { found.push(unescapeXml(unescapeXml(await soap(room.coordinatorHost, 'transport', 'GetMediaInfo', { InstanceID: 0 })))); } catch {}
     const all = found.join('\n');
-    // Prefer entries that are clearly Spotify (spotify%3a… in the URI)
-    const m = all.match(/spotify%3a[^"<\s]*?\?sid=(\d+)[^"<\s]*?sn=(\d+)/i) || all.match(/x-sonos-spotify:[^"<\s]*?sid=(\d+)[^"<\s]*?sn=(\d+)/i);
-    const d = all.match(/(SA_RINCON\d+_X_#Svc\d+-[0-9a-f]+-Token)/i);
-    if (m) account = { sid: m[1], sn: m[2], desc: d ? d[1] : 'SA_RINCON3079_X_#Svc3079-0-Token' };
+    // Look at each favourite / track entry that is clearly Spotify and take its numbers and region tag.
+    const chunks = all.split(/<item |<container /).filter(c => /spotify(%3a|:)/i.test(c));
+    lastSeen = chunks.map(c => ((c.match(/sid=(\d+)[^"<\s]*?sn=(\d+)/i) || []).slice(1).join('/') + ' ' + ((c.match(/SA_RINCON\d+_X_#Svc\d+/) || [])[0] || '?'))).slice(0, 8);
+    for (const c of chunks.concat([all])) {
+      const m = c.match(/sid=(\d+)[^"<\s]*?sn=(\d+)/i);
+      const d = c.match(/(SA_RINCON\d+_X_#Svc\d+-[0-9a-f]+-Token)/i);
+      if (m && (d || c === all)) { account = { sid: m[1], sn: m[2], desc: d ? d[1] : 'SA_RINCON3079_X_#Svc3079-0-Token' }; break; }
+    }
     return account || { sid: '12', sn: '1', desc: 'SA_RINCON3079_X_#Svc3079-0-Token', guessed: true };
   }
   function didl(id, cls, desc) {
@@ -148,7 +152,7 @@ export function createSonos({ log }) {
     await scan();
     const out = { status, rooms: rooms.map(r => ({ name: r.name, coordinator: r.coordinatorName, group: r.groupNames })) };
     const r = rooms[0];
-    if (r) { account = null; out.account = await spotifyAccount(r); }
+    if (r) { account = null; out.account = await spotifyAccount(r); out.seen = lastSeen; }
     return out;
   }
 
