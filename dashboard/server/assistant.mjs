@@ -156,7 +156,9 @@ export function createHouseTools(ctx) {
 // ---------------------------------------------------------------- Claude API
 const usage = { calls: 0, inTok: 0, outTok: 0, since: new Date().toISOString() };
 export function claudeUsage() { return usage; }
-export async function callClaude(secrets, body) {
+let sink = null; // cost ledger (costs.mjs) gets every response's usage
+export function setUsageSink(fn) { sink = fn; }
+export async function callClaude(secrets, body, tag) {
   const key = secrets.assistant && secrets.assistant.apiKey;
   if (!key) throw Object.assign(new Error('No Claude API key set (Admin → iMessage)'), { status: 400 });
   const r = await fetch(API, { method: 'POST', signal: AbortSignal.timeout(120000), headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -164,9 +166,10 @@ export async function callClaude(secrets, body) {
   if (!r.ok) throw Object.assign(new Error((j.error && j.error.message) || 'Claude API error ' + r.status), { status: r.status });
   usage.calls++;
   if (j.usage) { usage.inTok += j.usage.input_tokens || 0; usage.outTok += j.usage.output_tokens || 0; }
+  try { if (sink) sink(body.model || j.model, j.usage, tag); } catch {}
   return j;
 }
 export async function testKey(secrets, model) {
-  const j = await callClaude(secrets, { model: model || MODELS[0][0], max_tokens: 20, messages: [{ role: 'user', content: 'Reply with just: ok' }] });
+  const j = await callClaude(secrets, { model: model || MODELS[0][0], max_tokens: 20, messages: [{ role: 'user', content: 'Reply with just: ok' }] }, { channel: 'setup' });
   return (j.content || []).map(c => c.text || '').join('').trim();
 }

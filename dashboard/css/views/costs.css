@@ -1,0 +1,38 @@
+/* Costs — Claude API spending (frame). No CSS nesting / color-mix: the frame is WebView 106. */
+.cs { height: 100%; display: flex; flex-direction: column; gap: 16px; }
+.cs-head { display: flex; align-items: baseline; gap: 16px; }
+.cs-head h2 { margin: 0; font-size: 44px; line-height: 1; }
+.cs-top { display: grid; grid-template-columns: 1fr 1.25fr; gap: 16px; }
+.cs-bottom { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.cs .card { padding: 20px 22px; }
+.cs-hero { display: flex; flex-direction: column; gap: 6px; }
+.cs-big { font-size: 76px; font-weight: 700; letter-spacing: -.04em; line-height: 1; color: var(--ink); }
+.cs-sub { margin: 0; font-size: 18px; color: var(--ink-2); }
+.cs-note { margin: 4px 0 0; font-size: 15px; color: var(--mute); }
+.cs-budget { margin-top: 6px; }
+.cs-bar { height: 12px; border-radius: 999px; background: var(--paper-2); overflow: hidden; margin-bottom: 6px; }
+.cs-bar i { display: block; height: 100%; border-radius: 999px; background: var(--sage); }
+.cs-bar i.is-warn { background: var(--amber); }
+.cs-bar i.is-over { background: var(--alert); }
+.cs-budget small { font-size: 15px; color: var(--mute); }
+.cs-minis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+.cs-mini { background: var(--paper); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.cs-mini b { font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
+.cs-mini small { font-size: 13px; color: var(--mute); }
+.cs-days { display: flex; flex-direction: column; }
+.cs-card-h { display: flex; justify-content: space-between; align-items: baseline; }
+.cs-card-h b { font-size: 24px; font-weight: 700; }
+.cs-chart { flex: 1; min-height: 170px; display: flex; align-items: flex-end; gap: 4px; padding: 12px 0 22px; }
+.cs-col { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; position: relative; }
+.cs-col i { display: block; background: var(--accent); opacity: .55; border-radius: 5px 5px 0 0; }
+.cs-col.is-today i { opacity: 1; }
+.cs-col span { position: absolute; bottom: -22px; left: 50%; transform: translateX(-50%); font-size: 13px; color: var(--mute); white-space: nowrap; }
+.cs-list { display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
+.cs-row { display: flex; flex-direction: column; gap: 4px; }
+.cs-row-top { display: flex; justify-content: space-between; gap: 10px; font-size: 18px; }
+.cs-row-top b { font-weight: 700; }
+.cs-rbar { height: 8px; border-radius: 999px; background: var(--paper-2); overflow: hidden; }
+.cs-rbar i { display: block; height: 100%; background: var(--sage); border-radius: 999px; }
+.cs-row small { font-size: 13px; color: var(--mute); }
+.cs-empty { margin: 0; font-size: 16px; color: var(--mute); }
+.cs-wait { display: flex; align-items: center; gap: 14px; color: var(--mute); font-size: 20px; }

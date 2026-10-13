@@ -13,7 +13,8 @@ import { fileURLToPath } from 'node:url';
 import { createIntegrations } from './integrations.mjs';
 import { createGovee } from './govee.mjs';
 import { createAppleTV } from './appletv.mjs';
-import { MODELS, testKey, claudeUsage } from './assistant.mjs';
+import { MODELS, testKey, claudeUsage, setUsageSink } from './assistant.mjs';
+import { createCosts } from './costs.mjs';
 import { createAgents } from './agents.mjs';
 import { createPlexTools } from './plextools.mjs';
 import { createIMessage } from './imessage.mjs';
@@ -43,7 +44,7 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 // Keys the wall display / any screen on the home network may change (day-to-day use).
 const OPEN_KEYS = ['display', 'notes', 'games', 'chores', 'stars', 'week', 'groceries', 'events', 'devices', 'climate'];
 // Keys only an admin (or the agent token) may change.
-const LIVE_KEYS = ['bart', 'music', 'tv'];   // refreshed constantly by the server, not saved
+const LIVE_KEYS = ['bart', 'music', 'tv', 'costs'];   // refreshed constantly by the server, not saved
 const ADMIN_KEYS = ['commute', 'bart', 'music', 'people', 'family', 'routines', 'stores', 'catOrder', 'catalog', 'usuals', 'rooms',
   'scenes', 'cameras', 'photos', 'agents', 'media', 'weather', 'settings'];
 const ALL_KEYS = OPEN_KEYS.concat(ADMIN_KEYS);
@@ -253,6 +254,9 @@ const AG = createAgents({
 });
 PLX = createPlexTools({ plex: (p, o) => plex(p, o), plexOk: () => !!(secrets.plex.url && secrets.plex.token), settings: () => AG.settings(), log });
 const IM = createIMessage({ secrets, saveSecrets: () => saveSecrets(), log, agents: AG });
+// Claude API costs (Admin → Costs and the frame's Costs tab)
+const COSTS = createCosts({ dataDir: DATA, log, commit: (p, c) => commit(p, c), notify: (p, t) => IM.notify(p, t), agentName: id => { const a = AG.get(id); return a ? a.name : id; } });
+setUsageSink((m, u, t) => COSTS.record(m, u, t));
 
 // ------------------------------------------------------------------ HomeKit via Shortcuts
 // Each device / scene can name a Shortcut. We run it with a text input:
@@ -668,6 +672,10 @@ async function api(req, res, url) {
       } catch (e) { return send(res, e.status && e.status < 500 ? e.status : 409, { error: e.message }); }
       return send(res, 404, { error: 'Not found' });
     }
+    if (sub === 'costs') {
+      if (m === 'GET') return send(res, 200, Object.assign(COSTS.summary(), { recent: COSTS.recent(25), defaults: COSTS.defaults, models: MODELS }));
+      if (m === 'POST') return send(res, 200, COSTS.setConfig(await readBody(req)));
+    }
     if (sub === 'restart' && m === 'POST') { send(res, 200, { ok: true }); setTimeout(() => { if (saveTimer) save(); process.exit(0); }, 300); return; }
     if (sub.startsWith('tv/')) {
       try { return await TV.admin(sub.slice(3), req, res, readBody, send); }
@@ -916,5 +924,5 @@ server.listen(PORT, HOST, () => {
   log('  Dashboard:  http://' + os.hostname().replace(/\.local$/, '') + '.local:' + PORT + '/');
   addrs.forEach(a => log('              http://' + a + ':' + PORT + '/'));
   log('  Admin:      /admin');
-  refreshWeather(); refreshPlex(); X.start(); GV.start(); TV.start(); IM.start(); AG.startSchedules();
+  refreshWeather(); refreshPlex(); X.start(); GV.start(); TV.start(); IM.start(); AG.startSchedules(); COSTS.publish(); setInterval(() => COSTS.publish(), 30 * 60000);
 });

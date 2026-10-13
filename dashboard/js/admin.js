@@ -53,7 +53,7 @@ function fmtWhen(e) {
 }
 function photoUrl(p, w) { return p.src || 'https://picsum.photos/seed/' + p.seed + '/' + (w || 300) + '/' + Math.round((w || 300) * (p.o === 'p' ? 1.4 : 0.66)); }
 const ICONS = ['sunrise', 'utensils', 'film', 'away', 'moon', 'sun', 'bulb', 'heart', 'star', 'home', 'bolt', 'music'];
-const VIEWS = [['home', 'Today'], ['calendar', 'Calendar'], ['tasks', 'Chores'], ['shopping', 'Shopping'], ['notes', 'Notes'], ['music', 'Music'], ['photos', 'Photos'], ['map', 'Map'], ['games', 'Games'], ['control', 'Home'], ['settings', 'Settings'], ['agents', 'Agents']];
+const VIEWS = [['home', 'Today'], ['calendar', 'Calendar'], ['tasks', 'Chores'], ['shopping', 'Shopping'], ['notes', 'Notes'], ['music', 'Music'], ['photos', 'Photos'], ['map', 'Map'], ['games', 'Games'], ['control', 'Home'], ['settings', 'Settings'], ['agents', 'Agents'], ['costs', 'Costs']];
 
 // ------------------------------------------------------------------ schema-driven list editor
 // field: { k, label, type: text|number|color|check|select|people|datetime|date|textarea|shortcut|json, opts: () => [[v,label]] }
@@ -187,7 +187,7 @@ function deviceControl(d) {
 
 // ------------------------------------------------------------------ sections
 const SECTIONS = [['overview', 'Overview'], ['family', 'Family'], ['calendar', 'Calendar'], ['chores', 'Chores'], ['shopping', 'Shopping'],
-  ['photos', 'Photos'], ['music', 'Music'], ['home', 'Lights & Home'], ['assistant', 'iMessage'], ['agents', 'Agents'], ['settings', 'Settings']];
+  ['photos', 'Photos'], ['music', 'Music'], ['home', 'Lights & Home'], ['assistant', 'iMessage'], ['agents', 'Agents'], ['costs', 'Costs'], ['settings', 'Settings']];
 
 function overview() {
   const lights = (S.devices || []).filter(d => d.type === 'light' && d.on).length;
@@ -267,6 +267,43 @@ function photos() {
       <figcaption><input data-pmeta="${i}" data-pk="place" value="${esc(p.place || '')}" placeholder="Place"><input type="date" data-pmeta="${i}" data-pk="date" value="${esc(p.date || '')}">
       <span class="row"><button class="btn btn--s" data-pfav="${i}">${p.fav ? '★ Favourite' : '☆ Favourite'}</button><button class="btn btn--s btn--danger" data-pdel="${esc(p.id || p.seed)}">Delete</button></span></figcaption></figure>`).join('')}</div>
   </section>`;
+}
+// ------------------------------------------------------------------ Costs (Claude API)
+let CST = null, cstLoading = false;
+async function loadCosts() { if (cstLoading) return; cstLoading = true; try { CST = await call('/api/admin/costs'); } catch (e) { CST = { error: e.message }; } cstLoading = false; if (section === 'costs') rerenderSoon(); }
+const money = v => !v ? '$0' : v < 0.995 ? (v * 100 < 0.1 ? '<0.1¢' : (v * 100).toFixed(v * 100 < 10 ? 1 : 0) + '¢') : '$' + v.toFixed(2);
+const ktok = n => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(n);
+function costs() {
+  if (!CST) { loadCosts(); return '<section class="block"><p class="muted">Loading costs…</p></section>'; }
+  if (CST.error) return `<section class="block"><p class="warn">${esc(CST.error)}</p></section>`;
+  const C = CST, max = Math.max(0.0001, ...C.days.map(d => d.cost)), B = C.budget;
+  const stat = (label, o, extra) => `<div class="cs-stat"><span class="f-l">${label}</span><b class="num">${money(o.cost)}</b><small>${o.calls} call${o.calls === 1 ? '' : 's'}${o.searches ? ' · ' + o.searches + ' search' + (o.searches === 1 ? '' : 'es') : ''}</small>${extra || ''}</div>`;
+  const pct = B ? Math.min(100, C.month.cost / B * 100) : 0;
+  const table = (title, rows) => `<div class="cs-tab"><h3>${title}</h3>${rows.length ? `<table class="cs-t">${rows.map(r => `<tr><td>${esc(r.name)}</td><td class="muted">${r.calls}</td><td class="muted">${ktok(r.inTok)} in · ${ktok(r.outTok)} out</td><td class="num"><b>${money(r.cost)}</b></td></tr>`).join('')}</table>` : '<p class="muted small">Nothing this month yet.</p>'}</div>`;
+  const P = C.prices || {}, models = (C.models || []).map(m => m[0]);
+  const wsCost = C.month.searches * (P.web_search || 0);
+  return `<section class="block"><div class="block-h"><h2 class="serif">Claude API costs</h2><button class="btn btn--s" data-cstreload>Refresh</button></div>
+      <p class="intro small">What Home HQ’s agents and iMessage assistant have spent on your Claude API key, worked out from the token counts Claude reports on every reply. ${C.since ? 'Tracking since ' + new Date(C.since).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + '.' : 'Tracking starts with the next message.'} The official bill is at <a href="https://console.anthropic.com/settings/usage" target="_blank" rel="noopener">console.anthropic.com → Usage</a>.</p>
+      <div class="cs-stats">${stat('Today', C.today)}${stat('Last 7 days', C.week)}${stat('This month', C.month, `<small>on pace for ~${money(C.forecast)}</small>`)}${stat('Last month', C.lastMonth)}</div>
+      ${B ? `<div class="cs-budget"><div class="cs-bar"><i style="width:${pct}%" class="${pct >= 100 ? 'is-over' : pct >= 80 ? 'is-warn' : ''}"></i></div><small>${money(C.month.cost)} of your ${money(B)} monthly budget (${Math.round(pct)}%)</small></div>` : ''}
+    </section>
+    <section class="block"><div class="block-h"><h2 class="serif">Last 30 days</h2><span class="muted">${money(C.days.reduce((a, d) => a + d.cost, 0))}</span></div>
+      <div class="cs-chart">${C.days.map(d => `<div class="cs-col" title="${esc(d.date)}: ${money(d.cost)}, ${d.calls} calls"><i style="height:${d.cost ? Math.max(2, d.cost / max * 100) : 0}%"></i><span>${+d.date.slice(8) % 5 === 0 || d === C.days[C.days.length - 1] ? +d.date.slice(8) : ''}</span></div>`).join('')}</div>
+    </section>
+    <section class="block"><div class="block-h"><h2 class="serif">This month by…</h2></div>
+      <div class="cs-tabs">${table('Agent', C.byAgent)}${table('Where it came from', C.byChannel)}${table('Model', C.byModel)}</div>
+      ${C.month.searches ? `<p class="intro small">Web searches: ${C.month.searches} this month, ${money(wsCost)} of the total.</p>` : ''}
+    </section>
+    <section class="block"><div class="block-h"><h2 class="serif">Recent calls</h2><span class="muted">${C.all.calls} all time · ${money(C.all.cost)}</span></div>
+      ${C.recent.length ? `<div class="cs-scroll"><table class="cs-t cs-t--recent"><tr><th>When</th><th>Agent</th><th>Via</th><th>Model</th><th>Tokens</th><th></th></tr>${C.recent.map(r => `<tr><td>${new Date(r.t).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</td><td>${esc(r.agentName || '—')}</td><td class="muted">${esc(r.ch || '')}</td><td class="muted">${esc(r.label)}</td><td class="muted">${ktok(r.in + r.cw + r.cr)} in · ${ktok(r.out)} out${r.ws ? ' · ' + r.ws + ' search' : ''}</td><td class="num"><b>${money(r.cost)}</b></td></tr>`).join('')}</table></div>` : '<p class="muted">No calls yet.</p>'}
+    </section>
+    <section class="block"><div class="block-h"><h2 class="serif">Budget &amp; prices</h2></div>
+      <label class="f"><span class="f-l">Monthly budget (USD, 0 = none). JD gets a text at 80% and 100%.</span><div class="row"><input id="cs-budget" type="number" min="0" step="1" value="${B || ''}" placeholder="10"><button class="btn btn--solid" data-cstbudget>Save</button></div></label>
+      <p class="intro small" style="margin-top:12px">Prices per million tokens, used for the estimates above. Change them if Anthropic changes its prices; past calls are re-priced too.</p>
+      <table class="cs-t cs-prices"><tr><th>Model</th><th>Input $/M</th><th>Output $/M</th></tr>${models.map(m => `<tr><td>${esc(m)}</td><td><input type="number" step="0.01" min="0" data-cstin="${esc(m)}" value="${(P[m] || {}).in ?? ''}"></td><td><input type="number" step="0.01" min="0" data-cstout="${esc(m)}" value="${(P[m] || {}).out ?? ''}"></td></tr>`).join('')}
+        <tr><td>Web search</td><td colspan="2"><input type="number" step="0.001" min="0" id="cs-ws" value="${P.web_search ?? ''}"> per search</td></tr></table>
+      <div class="row wrap" style="margin-top:10px"><button class="btn btn--solid" data-cstprices>Save prices</button><button class="btn" data-cstreset>Reset to defaults</button></div>
+    </section>`;
 }
 // ------------------------------------------------------------------ Agents studio
 let AGS = null, agUI = { edit: null, chat: null, logs: {}, busy: false, open: {}, loading: false };
@@ -524,7 +561,7 @@ function music() {
   </section>`;
 }
 let showPast = false; const moreKeys = {};
-const RENDER = { overview, family, calendar, chores, shopping, photos, music, home, assistant, agents, settings };
+const RENDER = { overview, family, calendar, chores, shopping, photos, music, home, assistant, agents, costs, settings };
 
 // ------------------------------------------------------------------ shell
 function render() {
@@ -724,6 +761,14 @@ document.addEventListener('click', async e => {
     if (d.agmemadd != null) { const v = $('#ag-mem').value.trim(); if (!v) return; await call('/api/admin/agents/memory', { method: 'POST', body: { text: v } }); AGS = null; return loadAgents(); }
     if (d.agmemdel) { await call('/api/admin/agents/memory', { method: 'POST', body: { delete: d.agmemdel } }); AGS = null; return loadAgents(); }
     if (d.agrun) { agUI.open[d.agrun] = !agUI.open[d.agrun]; return render(); }
+    if (d.cstreload != null) { CST = null; return loadCosts(); }
+    if (d.cstbudget != null) { try { await call('/api/admin/costs', { method: 'POST', body: { budget: +$('#cs-budget').value || 0 } }); flash('Saved'); CST = null; return loadCosts(); } catch (e2) { return flash(e2.message, true); } }
+    if (d.cstprices != null) {
+      const prices = { web_search: +$('#cs-ws').value };
+      document.querySelectorAll('[data-cstin]').forEach(i => { prices[i.dataset.cstin] = { in: +i.value, out: +$('[data-cstout="' + i.dataset.cstin + '"]').value }; });
+      try { await call('/api/admin/costs', { method: 'POST', body: { prices } }); flash('Prices saved'); CST = null; return loadCosts(); } catch (e2) { return flash(e2.message, true); }
+    }
+    if (d.cstreset != null) { await call('/api/admin/costs', { method: 'POST', body: { resetPrices: true } }); flash('Back to default prices'); CST = null; return loadCosts(); }
     if (d.schnew != null) { agUI.sched = { kind: 'reminder', repeat: 'once', time: '', to: 'jd', agent: 'home', days: [] }; render(); const el = document.getElementById('sch-form'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
     if (d.schcancel != null) { agUI.sched = null; return render(); }
     if (d.schedit) {
@@ -895,6 +940,7 @@ async function boot() {
         if (msg.type === 'hello' && msg.rev > rev) reload().catch(() => {});
         if (msg.type === 'patch') { rev = Math.max(rev, msg.rev); if (msg.client === CLIENT) return; Object.assign(S, msg.patch); if (section !== 'agents') rerenderSoon(); }
         if (msg.type === 'agent-run') agentRunEvent(msg.run);
+        if (msg.type === 'patch' && msg.patch && msg.patch.costs && section === 'costs') loadCosts();
         if (msg.type === 'agent-schedules' && AGS && section === 'agents' && !agUI.sched) loadAgents();
       };
     }

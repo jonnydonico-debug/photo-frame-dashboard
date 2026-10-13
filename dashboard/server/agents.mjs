@@ -193,7 +193,7 @@ ${recent || '(none yet)'}`;
     let carry = '';
     try {
       for (let round = 0; round < 10; round++) {
-        const j = await callClaude(secrets, { model: agent.model || MODELS[0][0], max_tokens: 1500, system: system(agent, c), tools, messages });
+        const j = await callClaude(secrets, { model: agent.model || MODELS[0][0], max_tokens: 1500, system: system(agent, c), tools, messages }, { agent: agent.id, channel: c.channel });
         messages.push({ role: 'assistant', content: j.content });
         // Web searches Claude ran on its side show up as steps in the activity log
         for (const b of j.content || []) {
