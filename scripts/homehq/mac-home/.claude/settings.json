@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(~/HomeHQ/data/secrets.json)",
+      "Edit(~/HomeHQ/data/secrets.json)",
+      "Write(~/HomeHQ/data/secrets.json)",
+      "Read(~/HomeHQ/data/FIRST-RUN-PIN.txt)",
+      "Read(./data/secrets.json)",
+      "Edit(./data/secrets.json)"
+    ]
+  }
+}
