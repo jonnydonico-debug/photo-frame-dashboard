@@ -36,3 +36,12 @@ a phone app, an admin page, and a team of Claude agents that answer iMessage.
   GitHub (jonnydonico-debug/photo-frame-dashboard, branch `home-hq-live`) and other updates are
   copied in from there, so unlogged edits here can be overwritten.
 - If the server doesn't come back after an edit, read the end of `logs/server.log`.
+
+## Confirm before changing anything
+JD often drives this session from his phone (Remote Control), in short messages. Before editing
+any file, every time:
+1. Restate the request in plain words: what will change, which screen(s) (frame, admin, phone
+   app), and what it will look like or do when it's done.
+2. Ask about anything ambiguous (which tab, wording, colours, who sees it) instead of guessing.
+3. List the files you plan to touch, then wait for a clear "yes" before making changes.
+If the request changes during the conversation, confirm again before continuing.
