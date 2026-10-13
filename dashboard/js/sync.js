@@ -9,10 +9,10 @@
   var CLIENT = Math.random().toString(36).slice(2, 10);
   var KEYS = ['people', 'family', 'routines', 'chores', 'stars', 'week', 'stores', 'catOrder', 'groceries', 'catalog',
     'usuals', 'rooms', 'devices', 'climate', 'media', 'cameras', 'scenes', 'weather', 'photos', 'agents', 'events', 'settings',
-    'commute', 'bart', 'music', 'notes', 'games', 'display', 'tv', 'costs'];
-  var LIVE = ['bart', 'music', 'commute', 'weather', 'climate', 'media', 'tv', 'costs'];
+    'commute', 'bart', 'music', 'notes', 'games', 'display', 'tv', 'costs', 'todos', 'reminders'];
+  var LIVE = ['bart', 'music', 'commute', 'weather', 'climate', 'media', 'tv', 'costs', 'reminders'];
   // Keys this screen saves back. The phone app (signed in) also saves photo favourites.
-  var OPEN = ['display', 'notes', 'games', 'chores', 'stars', 'week', 'groceries', 'events', 'devices', 'climate'].concat(window.HQ_EXTRA_PUSH || []);
+  var OPEN = ['display', 'notes', 'games', 'chores', 'stars', 'week', 'groceries', 'events', 'devices', 'climate', 'todos'].concat(window.HQ_EXTRA_PUSH || []);
   var snap = {}, rev = 0, online = false, pending = null, pushTimer = null, sceneHint = null;
 
   var HQ = window.HQ = { client: CLIENT, online: function () { return online; } };

@@ -42,9 +42,9 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 // ------------------------------------------------------------------ state keys
 // Keys the wall display / any screen on the home network may change (day-to-day use).
-const OPEN_KEYS = ['display', 'notes', 'games', 'chores', 'stars', 'week', 'groceries', 'events', 'devices', 'climate'];
+const OPEN_KEYS = ['display', 'notes', 'games', 'chores', 'stars', 'week', 'groceries', 'events', 'devices', 'climate', 'todos'];
 // Keys only an admin (or the agent token) may change.
-const LIVE_KEYS = ['bart', 'music', 'tv', 'costs'];   // refreshed constantly by the server, not saved
+const LIVE_KEYS = ['bart', 'music', 'tv', 'costs', 'reminders'];   // refreshed constantly by the server, not saved
 const ADMIN_KEYS = ['commute', 'bart', 'music', 'people', 'family', 'routines', 'stores', 'catOrder', 'catalog', 'usuals', 'rooms',
   'scenes', 'cameras', 'photos', 'agents', 'media', 'weather', 'settings'];
 const ALL_KEYS = OPEN_KEYS.concat(ADMIN_KEYS);
@@ -73,7 +73,7 @@ function blankState() {
   // Everything empty except generic helpers (routines, aisle order, the grocery catalogue).
   const s = demoState();
   Object.assign(s, {
-    people: HOUSEHOLD.map(p => Object.assign({}, p)), notes: [], games: {}, events: [], chores: [], groceries: [], photos: [], stars: {}, week: {}, agents: [],
+    people: HOUSEHOLD.map(p => Object.assign({}, p)), notes: [], games: {}, todos: [], events: [], chores: [], groceries: [], photos: [], stars: {}, week: {}, agents: [],
     rooms: [], devices: [], scenes: [], cameras: [],
     stores: [{ id: 'store', name: 'Groceries' }],
     climate: { enabled: false, current: 20, set: 20, mode: 'off', humidity: 0, outside: null },
@@ -126,6 +126,16 @@ if (savedSchema < 4) {
   });
   state.settings.schema = 4;
   log('Updated saved data to schema 4 (earth-tone colors)');
+  saveSoon();
+}
+if (savedSchema < 5) {
+  // v5: Reminders & to-do tab (per person + house); Photos tab hidden from the frame
+  state.todos = state.todos || [];
+  const h = (state.settings.hiddenViews || []).filter(v => v !== 'reminders');
+  if (!h.includes('photos')) h.push('photos');
+  state.settings.hiddenViews = h;
+  state.settings.schema = 5;
+  log('Updated saved data to schema 5 (reminders tab, photos tab hidden)');
   saveSoon();
 }
 
@@ -485,6 +495,12 @@ async function api(req, res, url) {
       if (p === '/api/home/govee/scenes') return send(res, 200, await GV.scenes(url.searchParams.get('id') || ''));
       if (p === '/api/home/govee/scene' && m === 'POST') { const b = await readBody(req); return send(res, 200, await GV.playScene(String(b.id || ''), String(b.name || ''))); }
       if (p.startsWith('/api/home/tv')) return await TV.route(req, res, p, m, url, readBody, send);
+      if (p === '/api/home/reminders' && m === 'POST') {
+        const b = await readBody(req);
+        if (b.delete) { AG.deleteSchedule(String(b.delete)); return send(res, 200, { ok: true }); }
+        const r = AG.addFromHome(b);
+        return send(res, 200, { ok: true, id: r.id });
+      }
     } catch (e) { return send(res, e.status && e.status < 500 ? e.status : 409, { error: e.message }); }
     return send(res, 404, { error: 'Not found' });
   }

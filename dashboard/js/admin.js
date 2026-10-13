@@ -53,7 +53,7 @@ function fmtWhen(e) {
 }
 function photoUrl(p, w) { return p.src || 'https://picsum.photos/seed/' + p.seed + '/' + (w || 300) + '/' + Math.round((w || 300) * (p.o === 'p' ? 1.4 : 0.66)); }
 const ICONS = ['sunrise', 'utensils', 'film', 'away', 'moon', 'sun', 'bulb', 'heart', 'star', 'home', 'bolt', 'music'];
-const VIEWS = [['home', 'Today'], ['calendar', 'Calendar'], ['tasks', 'Chores'], ['shopping', 'Shopping'], ['notes', 'Notes'], ['music', 'Music'], ['photos', 'Photos'], ['map', 'Map'], ['games', 'Games'], ['control', 'Home'], ['settings', 'Settings'], ['agents', 'Agents'], ['costs', 'Costs']];
+const VIEWS = [['home', 'Today'], ['calendar', 'Calendar'], ['tasks', 'Chores'], ['shopping', 'Shopping'], ['reminders', 'Reminders'], ['notes', 'Notes'], ['music', 'Music'], ['photos', 'Photos'], ['map', 'Map'], ['games', 'Games'], ['control', 'Home'], ['settings', 'Settings'], ['agents', 'Agents'], ['costs', 'Costs']];
 
 // ------------------------------------------------------------------ schema-driven list editor
 // field: { k, label, type: text|number|color|check|select|people|datetime|date|textarea|shortcut|json, opts: () => [[v,label]] }
@@ -329,7 +329,7 @@ function agents() {
 const DAYN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function agSchedules() {
   const L = AGS.schedules || [], P = AGS.people || [], f = agUI.sched;
-  const toName = d => d === 'frame' ? 'the wall frame' : d === 'both' ? 'JD & Georgia' : d === 'none' ? 'nobody (log only)' : ((P.find(p => p.id === d) || {}).name || d);
+  const toName = d => d === 'frame' ? 'the wall frame' : d === 'both' ? 'JD & Georgia' : d === 'house' ? 'the house (both + frame)' : d === 'none' ? 'nobody (log only)' : ((P.find(p => p.id === d) || {}).name || d);
   const nextTxt = t => { if (!t) return ''; const d = new Date(t), today = new Date().toDateString() === d.toDateString(); return 'next ' + (today ? 'today' : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })) + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); };
   const row = s => `<div class="ag-sch ${s.enabled ? '' : 'is-off'}"><div class="ag-sch-main"><b>${s.kind === 'task' ? '🗓️' : '⏰'} ${esc(s.title)}</b>
       <small>${esc(s.whenText)} → ${esc(toName(s.deliver))}${s.kind === 'task' ? ' · ' + esc(agName(s.agent)) : ''}${s.enabled && s.next ? ' · ' + nextTxt(s.next) : ''}${s.lastStatus === 'error' ? ' · <span class="warn-t">last run failed: ' + esc(s.lastError || '') + '</span>' : s.lastStatus === 'skipped' ? ' · last one skipped (Mac was off)' : ''}</small>
@@ -343,7 +343,7 @@ function agSchedules() {
       <div class="grid2"><label class="f"><span class="f-l">Repeat</span><select id="sch-rep">${[['once', 'Once'], ['daily', 'Every day'], ['weekdays', 'Weekdays'], ['weekends', 'Weekends'], ['weekly', 'On these days…']].map(([v, l]) => `<option value="${v}" ${f.repeat === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <label class="f"><span class="f-l">Time</span><input id="sch-time" type="time" value="${esc(f.time || '07:30')}"></label></div>
       <div class="grid2"><label class="f"><span class="f-l">Date (for once)</span><input id="sch-date" type="date" value="${esc(f.date || '')}"></label>
-      <label class="f"><span class="f-l">Send to</span><select id="sch-to">${P.map(p => [p.id, p.name]).concat([['both', 'JD & Georgia'], ['frame', 'The wall frame'], ['none', 'Nobody (just log it)']]).map(([v, l]) => `<option value="${esc(v)}" ${f.to === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label></div>
+      <label class="f"><span class="f-l">Send to</span><select id="sch-to">${P.map(p => [p.id, p.name]).concat([['house', 'House (texts both + frame)'], ['both', 'JD & Georgia'], ['frame', 'The wall frame'], ['none', 'Nobody (just log it)']]).map(([v, l]) => `<option value="${esc(v)}" ${f.to === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label></div>
       <div class="f-l">Days (for “On these days…”)</div>
       <div class="chips">${DAYN.map((n, i) => `<label class="chip ${(f.days || []).includes(i) ? 'is-on' : ''}"><input type="checkbox" data-schday="${i}" ${(f.days || []).includes(i) ? 'checked' : ''} style="display:none">${n}</label>`).join('')}</div>
       <label class="f"><span class="f-l">Agent that does the job (jobs only)</span><select id="sch-agent">${AGS.agents.map(a => `<option value="${esc(a.id)}" ${f.agent === a.id ? 'selected' : ''}>${esc(a.icon + ' ' + a.name)}${a.enabled ? '' : ' (off)'}</option>`).join('')}</select></label>

@@ -26,6 +26,7 @@
   <link rel="stylesheet" href="css/views/games.css">
   <link rel="stylesheet" href="css/views/settings.css">
   <link rel="stylesheet" href="css/views/costs.css">
+  <link rel="stylesheet" href="css/views/reminders.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <link rel="stylesheet" href="css/theme.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="" defer></script>
@@ -42,6 +43,7 @@
       <button class="rail-item" data-go="calendar"><svg class="i" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span>Calendar</span></button>
       <button class="rail-item" data-go="tasks"><svg class="i" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M7.5 12l3 3 6-6"/></svg><span>Chores</span></button>
       <button class="rail-item" data-go="shopping"><svg class="i" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2.2l2.3 11h10.8L21 8H6.5"/><circle cx="10" cy="19.5" r="1.5"/><circle cx="17" cy="19.5" r="1.5"/></svg><span>Shopping</span></button>
+      <button class="rail-item" data-go="reminders"><svg class="i" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span>Reminders</span></button>
       <button class="rail-item" data-go="notes"><svg class="i" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5z"/><path d="M15 3v4h4M8 12h8M8 16h5"/></svg><span>Notes</span></button>
       <button class="rail-item" data-go="music"><svg class="i" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg><span>Music</span></button>
       <button class="rail-item" data-go="photos"><svg class="i" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/></svg><span>Photos</span></button>
@@ -62,6 +64,7 @@
       <section class="view view--bleed" id="view-photos" data-view="photos"></section>
       <section class="view" id="view-music" data-view="music"></section>
       <section class="view view--bleed" id="view-map" data-view="map"></section>
+      <section class="view" id="view-reminders" data-view="reminders"></section>
       <section class="view" id="view-notes" data-view="notes"></section>
       <section class="view" id="view-games" data-view="games"></section>
       <section class="view" id="view-control" data-view="control"></section>

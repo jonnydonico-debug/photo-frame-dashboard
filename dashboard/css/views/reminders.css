@@ -1,0 +1,32 @@
+/* Reminders & to-dos — JD / Georgia / House columns. No CSS nesting / color-mix (WebView 106). */
+.rm { height: 100%; display: flex; flex-direction: column; gap: 16px; }
+.rm-head { display: flex; align-items: baseline; gap: 16px; }
+.rm-head h2 { margin: 0; font-size: 44px; line-height: 1; }
+.rm-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); gap: 16px; }
+.rm-col { display: flex; flex-direction: column; min-height: 0; padding: 18px 18px 14px; border-top: 6px solid var(--c); }
+.rm-col-h { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.rm-col-h h3 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; }
+.rm-col-h small { font-size: 15px; color: var(--mute); }
+.rm-house { display: inline-grid; place-items: center; border-radius: 50%; background: #9A7B4F; color: #fff; flex: none; }
+.rm-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding-right: 2px; }
+.rm-sec { display: flex; flex-direction: column; gap: 6px; }
+.rm-sec > .label { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+.rm-empty { margin: 0; font-size: 16px; color: var(--mute); }
+.rm-rem { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; padding: 10px 12px; border-radius: 14px; background: rgb(var(--c-rgb) / .1); }
+.rm-rem:active { transform: scale(.98); }
+.rm-when { font-size: 14px; font-weight: 700; color: var(--c); letter-spacing: .01em; }
+.rm-text { font-size: 19px; line-height: 1.25; color: var(--ink); word-break: break-word; }
+.rm-todo { display: flex; align-items: flex-start; gap: 10px; }
+.rm-check { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 2.5px solid var(--c); display: grid; place-items: center; color: #fff; margin-top: 2px; }
+.rm-todo.is-done .rm-check { background: var(--c); }
+.rm-ttext { flex: 1; text-align: left; font-size: 19px; line-height: 1.3; padding: 6px 0; color: var(--ink); word-break: break-word; }
+.rm-todo.is-done .rm-ttext { text-decoration: line-through; color: var(--mute); }
+.rm-add { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); margin-top: 10px; }
+.rm-add .btn { justify-content: center; gap: 6px; min-height: 56px; font-size: 18px; }
+.rm-add .btn[disabled] { opacity: .4; }
+.rm-who .who-btn { flex: 1; }
+.rm-sheet .add-row { margin-top: 6px; }
+.rm-timerow { align-items: flex-end; }
+.rm-time { display: flex; align-items: center; gap: 10px; background: var(--paper); border-radius: 20px; padding: 6px 8px; }
+.rm-time .st-clock { min-width: 120px; justify-content: center; }
+.rm-sum { margin: 18px 0 0; font-size: 18px; color: var(--ink-2); }

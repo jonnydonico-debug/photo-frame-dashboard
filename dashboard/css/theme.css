@@ -264,3 +264,8 @@ body { font-feature-settings: 'cv11', 'ss01'; letter-spacing: -.005em; }
 .room-h { border-bottom: 1px solid rgba(60, 50, 35, .12); }
 .tile--blind .tile-fill { background: #CBD5C6; }
 .tile--blind.is-on { background: #E6EBE2; }
+
+/* Many tabs: the side menu scrolls instead of stretching the whole screen taller than 800px */
+.stage { grid-template-rows: minmax(0, 1fr); }
+.rail { min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.rail::-webkit-scrollbar { display: none; }
