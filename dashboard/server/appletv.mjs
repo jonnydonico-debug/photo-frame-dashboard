@@ -207,5 +207,5 @@ export function createAppleTV({ dataDir, here, commit, secrets, saveSecrets, log
   }
 
   function start() { if (setup.state === 'ready') startHelper(); else push(); }
-  return { start, route, admin, status, install };
+  return { start, route, admin, status, install, cmd: call };
 }

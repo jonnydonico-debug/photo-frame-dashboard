@@ -187,7 +187,7 @@ function deviceControl(d) {
 
 // ------------------------------------------------------------------ sections
 const SECTIONS = [['overview', 'Overview'], ['family', 'Family'], ['calendar', 'Calendar'], ['chores', 'Chores'], ['shopping', 'Shopping'],
-  ['photos', 'Photos'], ['music', 'Music'], ['home', 'Lights & Home'], ['settings', 'Settings']];
+  ['photos', 'Photos'], ['music', 'Music'], ['home', 'Lights & Home'], ['assistant', 'iMessage'], ['settings', 'Settings']];
 
 function overview() {
   const lights = (S.devices || []).filter(d => d.type === 'light' && d.on).length;
@@ -268,6 +268,37 @@ function photos() {
       <span class="row"><button class="btn btn--s" data-pfav="${i}">${p.fav ? '★ Favourite' : '☆ Favourite'}</button><button class="btn btn--s btn--danger" data-pdel="${esc(p.id || p.seed)}">Delete</button></span></figcaption></figure>`).join('')}</div>
   </section>`;
 }
+let askUI = { q: '', a: '', busy: false };
+function assistant() {
+  const A = cfg.assistant || { allow: [], status: {}, models: [] }, st = A.status || {}, ps = S.people || [];
+  const handleFor = pid => ((A.allow || []).find(x => x.person === pid) || {}).handle || '';
+  const live = st.state === 'listening' && A.enabled;
+  const step = (n, done, title, body) => `<section class="block"><div class="block-h"><h2 class="serif">${n}. ${title}</h2><span class="muted">${done ? '✓ done' : ''}</span></div>${body}</section>`;
+  return `<section class="block"><div class="block-h"><h2 class="serif">Text your house</h2><span class="muted">${live ? 'listening' : A.enabled ? (st.state === 'error' ? 'needs attention' : 'starting') : 'off'}</span></div>
+      <p class="intro">Text the Mac mini’s iMessage from your phone: ask what’s on the shopping list, send a photo of something you’re out of, “turn the lamp warm white”, “next BART?”, “play some jazz”, or any question. It answers using Claude.</p>
+      ${st.state === 'error' ? `<p class="warn">${esc(st.error || '')}</p>` : ''}${st.lastError ? `<p class="warn small">Last problem: ${esc(st.lastError)}</p>` : ''}
+      ${A.usage && A.usage.messages ? `<p class="intro small">${A.usage.messages} messages answered since the last restart.</p>` : ''}
+    </section>` +
+    step(1, A.hasKey, 'Claude API key', `<p class="intro">The assistant uses Claude through the Claude API, which is billed separately from a Claude subscription (pay as you go). Typical texts cost about a cent each on Sonnet, a fraction of that on Haiku.</p>
+      <ol class="steps"><li>Go to <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com → API keys</a>, sign in, add a few dollars of credit under Billing.</li><li>Create a key, copy it, paste it here.</li></ol>
+      <div class="row"><input id="ai-key" type="password" autocomplete="new-password" data-1p-ignore data-lpignore="true" placeholder="${A.hasKey ? '•••••••• (saved)' : 'sk-ant-…'}"><button class="btn btn--solid" data-aikey>Save</button></div>
+      <label class="f" style="margin-top:10px"><span class="f-l">Model</span><select id="ai-model">${(A.models || []).map(([v, l]) => `<option value="${v}" ${A.model === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`) +
+    step(2, (A.allow || []).length > 0, 'Who can text it', `<p class="intro">Only these numbers or Apple ID emails get answers. Everyone else is ignored.</p>
+      ${ps.map(p => `<label class="f"><span class="f-l">${esc(p.name)}’s iMessage (phone or email)</span><input data-aiallow="${esc(p.id)}" inputmode="tel" value="${esc(handleFor(p.id))}" placeholder="+1 510 555 0123"></label>`).join('')}
+      <button class="btn btn--solid" data-aiallowsave>Save</button>`) +
+    step(3, st.state === 'listening', 'Let Home HQ read Messages', `<p class="intro">macOS keeps Messages private, so give the Home HQ engine permission once, on the Mac mini itself:</p>
+      <ol class="steps"><li>Open <b>System Settings → Privacy &amp; Security → Full Disk Access</b>.</li><li>Click <b>+</b>, press <b>⌘ Shift G</b>, paste the path below, press Return, then <b>Open</b>. Make sure its switch is on.</li><li>Tap <b>Restart Home HQ</b> here.</li></ol>
+      <div class="row"><code class="token sel">${esc(st.node || '~/HomeHQ/node/bin/node')}</code></div>
+      <div class="row wrap" style="margin-top:8px"><button class="btn" data-restart>Restart Home HQ</button></div>
+      <p class="intro small">The first reply also makes macOS ask whether Home HQ may control Messages. Click <b>OK</b> on the Mac.</p>`) +
+    step(4, live, 'Turn it on', `<label class="f f--check"><input type="checkbox" data-aion ${A.enabled ? 'checked' : ''}><span class="f-l">Answer texts</span></label>
+      <div class="row wrap">${ps.filter(p => handleFor(p.id)).map(p => `<button class="btn btn--s" data-aitest="${esc(handleFor(p.id))}">Send ${esc(p.name)} a hello</button>`).join('')}</div>`) +
+    `<section class="block"><div class="block-h"><h2 class="serif">Try it here</h2></div>
+      <p class="intro small">Talks to the same assistant without iMessage, handy for testing.</p>
+      <div class="row"><input id="ai-q" placeholder="What’s on the shopping list?" value="${esc(askUI.q)}"><button class="btn btn--solid" data-aiask ${askUI.busy ? 'disabled' : ''}>${askUI.busy ? '…' : 'Ask'}</button></div>
+      ${askUI.a ? `<pre class="code" style="white-space:pre-wrap">${esc(askUI.a)}</pre>` : ''}
+    </section>`;
+}
 let tvUI = { scan: null, pair: null, busy: '' };
 function goveeBlock() {
   const G = cfg.govee || { set: false, status: {} }, lights = (S.devices || []).filter(d => d.source === 'govee');
@@ -276,7 +307,7 @@ function goveeBlock() {
       ${G.set ? '' : `<ol class="steps"><li>Open the <b>Govee Home</b> app → <b>Profile</b> → ⚙️ <b>Settings</b> → <b>Apply for API Key</b>.</li><li>Govee emails you the key. Paste it below and tap Save. Your lights appear on the frame and phones straight away.</li></ol>`}
       ${G.status && G.status.ok === false ? `<p class="warn">${esc(G.status.error || 'Govee didn’t answer')}</p>` : ''}
       ${lights.length ? '<ul class="status">' + lights.map(d => `<li><b>${esc(d.name)}</b> ${d.online === false ? 'offline' : d.on ? 'on · ' + (d.level || 100) + '%' : 'off'}</li>`).join('') + '</ul>' : ''}
-      <div class="row"><input id="gv-key" type="password" autocomplete="off" placeholder="${G.set ? '•••••••• (saved)' : 'Govee API key'}"><button class="btn btn--solid" data-gvsave>Save</button></div>
+      <div class="row"><input id="gv-key" type="password" autocomplete="new-password" data-1p-ignore data-lpignore="true" placeholder="${G.set ? '•••••••• (saved)' : 'Govee API key'}"><button class="btn btn--solid" data-gvsave>Save</button></div>
       ${G.set ? '<div class="row wrap" style="margin-top:8px"><button class="btn btn--s" data-gvfind>Look for new lights</button><button class="btn btn--s" data-gvoff>Remove key</button></div>' : ''}
       ${G.set ? '<p class="intro small">Rename a light or move it to another room in Devices below.</p>' : ''}
     </section>`;
@@ -344,7 +375,7 @@ function settings() {
       <p class="intro">A free TomTom key adds current traffic to the BART drive times, and lets the Map tab show traffic on the roads and along your route. The key stays on the Mac mini.</p>
       <ol class="steps"><li>Sign up free at <a href="https://developer.tomtom.com" target="_blank" rel="noopener">developer.tomtom.com</a>.</li><li>Open <b>Dashboard → Keys</b> and copy the key it made for you.</li><li>Paste it below and tap Save.</li></ol>
       ${TT.status && TT.status.ok === false ? `<p class="warn">${esc(TT.status.error || 'TomTom didn’t answer')}</p>` : ''}
-      <div class="row"><input id="tt-key" type="password" autocomplete="off" placeholder="${TT.set ? '•••••••• (saved)' : 'TomTom API key'}"><button class="btn btn--solid" data-ttsave>Save</button>${TT.set ? '<button class="btn" data-ttoff>Remove</button>' : ''}</div>
+      <div class="row"><input id="tt-key" type="password" autocomplete="new-password" data-1p-ignore data-lpignore="true" placeholder="${TT.set ? '•••••••• (saved)' : 'TomTom API key'}"><button class="btn btn--solid" data-ttsave>Save</button>${TT.set ? '<button class="btn" data-ttoff>Remove</button>' : ''}</div>
     </section>
     <section class="block"><div class="block-h"><h2 class="serif">Plex</h2><span class="muted">${P.status.ok ? 'connected' : 'off'}</span></div>
       <p class="intro">Shows what’s playing on the Home tab, and lets you (or the agent) rescan libraries. Your Plex token: Plex Web → any item → ⋯ → Get Info → View XML, copy <code>X-Plex-Token</code> from the address bar.</p>
@@ -393,7 +424,7 @@ function music() {
   </section>`;
 }
 let showPast = false; const moreKeys = {};
-const RENDER = { overview, family, calendar, chores, shopping, photos, music, home, settings };
+const RENDER = { overview, family, calendar, chores, shopping, photos, music, home, assistant, settings };
 
 // ------------------------------------------------------------------ shell
 function render() {
@@ -424,6 +455,11 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', async e => {
   const t = e.target, ctx = itemAt(t);
+  if (t.id === 'ai-model') { await call('/api/admin/assistant', { method: 'POST', body: { model: t.value } }); flash('Model saved'); return; }
+  if (t.hasAttribute && t.hasAttribute('data-aion')) {
+    try { const r = await call('/api/admin/assistant', { method: 'POST', body: { enabled: t.checked } }); flash(t.checked ? (r.status && r.status.state === 'listening' ? 'Listening for texts' : 'On · see the steps above') : 'Off'); } catch (e2) { flash(e2.message, true); }
+    cfg = await call('/api/admin/config'); return render();
+  }
   if (ctx && t.dataset.k) {
     const f = SCHEMAS[ctx.key].fields.find(x => x.k === t.dataset.k);
     let v = t.type === 'checkbox' ? t.checked : t.value;
@@ -554,6 +590,24 @@ document.addEventListener('click', async e => {
       const r = $('#geo-res')._res[+d.geopick];
       await call('/api/admin/config', { method: 'POST', body: { settings: { lat: r.lat, lon: r.lon, place: r.name.split(',')[0] } } });
       await call('/api/admin/weather/refresh', { method: 'POST' }); flash('Weather set'); return reload();
+    }
+    if (d.aikey != null) {
+      const k = $('#ai-key').value.trim(); if (!k) return flash('Paste the key first', true);
+      flash('Checking with Claude…');
+      try { await call('/api/admin/assistant', { method: 'POST', body: { apiKey: k, model: $('#ai-model').value } }); flash('Key works'); } catch (e2) { flash(e2.message, true); }
+      cfg = await call('/api/admin/config'); return render();
+    }
+    if (d.aiallowsave != null) {
+      const allow = [...document.querySelectorAll('[data-aiallow]')].map(i => ({ person: i.dataset.aiallow, handle: i.value.trim() })).filter(x => x.handle);
+      await call('/api/admin/assistant', { method: 'POST', body: { allow } }); flash('Saved'); cfg = await call('/api/admin/config'); return render();
+    }
+    if (d.aitest) { try { await call('/api/admin/assistant/test-send', { method: 'POST', body: { handle: d.aitest } }); flash('Sent'); } catch (e2) { flash(e2.message, true); } return; }
+    if (d.restart != null) { flash('Restarting…'); await call('/api/admin/restart', { method: 'POST' }).catch(() => {}); setTimeout(async () => { try { cfg = await call('/api/admin/config'); render(); flash('Restarted'); } catch {} }, 6000); return; }
+    if (d.aiask != null) {
+      askUI.q = $('#ai-q').value.trim(); if (!askUI.q) return;
+      askUI.busy = true; askUI.a = ''; render();
+      try { askUI.a = (await call('/api/admin/assistant/ask', { method: 'POST', body: { text: askUI.q } })).reply; } catch (e2) { askUI.a = 'Error: ' + e2.message; }
+      askUI.busy = false; return render();
     }
     if (d.gvsave != null) {
       const key = $('#gv-key').value.trim(); if (!key) return flash('Paste your Govee key first', true);

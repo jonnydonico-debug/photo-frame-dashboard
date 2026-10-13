@@ -13,6 +13,8 @@ import { fileURLToPath } from 'node:url';
 import { createIntegrations } from './integrations.mjs';
 import { createGovee } from './govee.mjs';
 import { createAppleTV } from './appletv.mjs';
+import { createAssistant, MODELS } from './assistant.mjs';
+import { createIMessage } from './imessage.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -232,6 +234,14 @@ function commit(patch, client) {
 const GV = createGovee({ getState: () => state, commit: (p, c) => commit(p, c), secrets, saveSecrets: () => saveSecrets(), log });
 const TV = createAppleTV({ dataDir: DATA, here: HERE, commit: (p, c) => commit(p, c), secrets, saveSecrets: () => saveSecrets(), log });
 const X = createIntegrations({ getState: () => state, commit, secrets, saveSecrets: () => saveSecrets(), log, dataDir: DATA, photosDir: PHOTOS });
+const AI = createAssistant({
+  getState: () => state, commit: (p, c) => commit(p, c), secrets, log,
+  devices: { apply: (a, b) => fireDeviceShortcuts(a, b) },
+  spotify: { search: q => X.spotifySearch(q), command: b => X.spotifyCommand(b) },
+  tv: { cmd: (c, a, t) => TV.cmd(c, a, t) }, govee: GV,
+  announce: text => broadcast({ type: 'announce', text, icon: 'bell' })
+});
+const IM = createIMessage({ secrets, saveSecrets: () => saveSecrets(), log, assistant: AI });
 
 // ------------------------------------------------------------------ HomeKit via Shortcuts
 // Each device / scene can name a Shortcut. We run it with a text input:
@@ -592,6 +602,7 @@ async function api(req, res, url) {
         icloud: { set: !!secrets.icloudAlbum, status: X.albumStatus() },
         tomtom: X.tomtomStatus(),
         govee: GV.status(),
+        assistant: (() => { const a = secrets.assistant || {}; return { enabled: !!a.enabled, hasKey: !!a.apiKey, model: a.model || MODELS[0][0], models: MODELS, allow: a.allow || [], status: IM.status(), usage: AI.usage() }; })(),
         tv: TV.status(),
         spotify: { clientId: (secrets.spotify || {}).clientId || '', hasSecret: !!(secrets.spotify || {}).clientSecret, connected: !!(secrets.spotify || {}).refreshToken, status: X.spotifyStatus(), redirect: spotifyRedirect(req) },
         apiToken: secrets.apiToken, isMac: IS_MAC, hostname: os.hostname(), port: PORT,
@@ -609,6 +620,29 @@ async function api(req, res, url) {
       if (b.settings) { commit({ settings: Object.assign({}, state.settings, b.settings) }, 'admin'); refreshWeather(); }
       return send(res, 200, { ok: true });
     }
+    if (sub === 'assistant' && m === 'POST') {
+      const b = await readBody(req), a = secrets.assistant = secrets.assistant || {};
+      if (b.apiKey !== undefined) {
+        const prev = a.apiKey; a.apiKey = String(b.apiKey || '').trim();
+        if (a.apiKey) { try { await AI.test(); } catch (e) { a.apiKey = prev; saveSecrets(); return send(res, 400, { error: 'Claude said: ' + e.message }); } }
+      }
+      if (b.model && MODELS.some(x => x[0] === b.model)) a.model = b.model;
+      if (Array.isArray(b.allow)) a.allow = b.allow.slice(0, 6).map(x => ({ handle: String(x.handle || '').trim().slice(0, 80), person: String(x.person || '') })).filter(x => x.handle);
+      if (b.enabled !== undefined) a.enabled = !!b.enabled;
+      saveSecrets();
+      return send(res, 200, { ok: true, status: await IM.start() });
+    }
+    if (sub === 'assistant/ask' && m === 'POST') {
+      const b = await readBody(req);
+      try { return send(res, 200, { reply: await AI.reply({ text: String(b.text || ''), images: [], who: String(b.who || 'jd'), handle: 'admin-test' }) }); }
+      catch (e) { return send(res, e.status === 401 ? 400 : 409, { error: e.message }); }
+    }
+    if (sub === 'assistant/test-send' && m === 'POST') {
+      const b = await readBody(req);
+      try { await IM.testSend(String(b.handle || '')); return send(res, 200, { ok: true }); }
+      catch (e) { return send(res, 409, { error: /not authorized|1743|-1743/i.test(e.message) ? 'The Mac blocked Home HQ from using Messages. Allow it in System Settings → Privacy & Security → Automation.' : e.message }); }
+    }
+    if (sub === 'restart' && m === 'POST') { send(res, 200, { ok: true }); setTimeout(() => { if (saveTimer) save(); process.exit(0); }, 300); return; }
     if (sub.startsWith('tv/')) {
       try { return await TV.admin(sub.slice(3), req, res, readBody, send); }
       catch (e) { return send(res, e.status && e.status < 500 ? e.status : 409, { error: e.message }); }
@@ -856,5 +890,5 @@ server.listen(PORT, HOST, () => {
   log('  Dashboard:  http://' + os.hostname().replace(/\.local$/, '') + '.local:' + PORT + '/');
   addrs.forEach(a => log('              http://' + a + ':' + PORT + '/'));
   log('  Admin:      /admin');
-  refreshWeather(); refreshPlex(); X.start(); GV.start(); TV.start();
+  refreshWeather(); refreshPlex(); X.start(); GV.start(); TV.start(); IM.start();
 });
