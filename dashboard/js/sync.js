@@ -11,7 +11,8 @@
     'usuals', 'rooms', 'devices', 'climate', 'media', 'cameras', 'scenes', 'weather', 'photos', 'agents', 'events', 'settings',
     'commute', 'bart', 'music', 'notes', 'games', 'display'];
   var LIVE = ['bart', 'music', 'commute', 'weather', 'climate', 'media'];
-  var OPEN = ['display', 'notes', 'games', 'chores', 'stars', 'week', 'groceries', 'events', 'devices', 'climate'];
+  // Keys this screen saves back. The phone app (signed in) also saves photo favourites.
+  var OPEN = ['display', 'notes', 'games', 'chores', 'stars', 'week', 'groceries', 'events', 'devices', 'climate'].concat(window.HQ_EXTRA_PUSH || []);
   var snap = {}, rev = 0, online = false, pending = null, pushTimer = null, sceneHint = null;
 
   var HQ = window.HQ = { client: CLIENT, online: function () { return online; } };
@@ -86,6 +87,8 @@
       });
   }
   HQ.scene = function (id) { sceneHint = id; };
+  // Re-read everything (the phone app calls this when it comes back to the foreground)
+  HQ.refresh = function () { return load().then(refreshUI); };
 
   // ------------------------------------------------------------ incoming
   var rerenderTimer = null;

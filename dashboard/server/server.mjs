@@ -21,7 +21,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const BUILT = path.join(ROOT, 'dist');
 const DIST = path.resolve(process.env.HOMEHQ_DIST || (fs.existsSync(path.join(BUILT, 'index.html')) ? BUILT : ROOT));
 const FROM_SOURCE = DIST === ROOT;
-const SOURCE_OK = /^\/(index\.html|admin\.html|js\/[\w\/.-]+\.js|css\/[\w\/.-]+\.css)$/;
+const SOURCE_OK = /^\/(index\.html|admin\.html|app\.html|js\/[\w\/.-]+\.js|css\/[\w\/.-]+\.css)$/;
 const DATA = path.resolve(process.env.HOMEHQ_DATA || path.join(ROOT, 'data'));
 const PHOTOS = path.join(DATA, 'photos');
 const BACKUPS = path.join(DATA, 'backups');
@@ -202,6 +202,7 @@ function sameHome(ip) {
 function fromHomeViaTunnel(req) { return viaInternet(req) && sameHome(String(req.headers['cf-connecting-ip'] || '')); }
 learnPublicIp(); setInterval(learnPublicIp, 30 * 60000);
 const isAdminHost = req => /^admin\./i.test(String(req.headers.host || ''));
+const isAppHost = req => /^app\./i.test(String(req.headers.host || ''));
 // Home network, Tailscale (100.64/10) or this machine.
 function isPrivate(ip) {
   if (ip === '::1' || ip.startsWith('127.') || ip.startsWith('10.') || ip.startsWith('192.168.')) return true;
@@ -537,21 +538,25 @@ async function api(req, res, url) {
   }
 
   if (p === '/api/login' && m === 'POST') {
-    const f = fails.get(ip);
+    const who = String(req.headers['cf-connecting-ip'] || ip);
+    const f = fails.get(who);
     if (f && f.n >= 5 && f.until > Date.now()) return send(res, 429, { error: 'Too many tries. Wait a few minutes.' });
-    const { pin } = await readBody(req);
+    const { pin, app } = await readBody(req);
     if (!pin || !pinOk(pin)) {
       const n = (f && f.until > Date.now() ? f.n : 0) + 1;
-      fails.set(ip, { n, until: Date.now() + 5 * 60000 });
+      fails.set(who, { n, until: Date.now() + 5 * 60000 });
       return send(res, 401, { error: 'Wrong PIN' });
     }
-    fails.delete(ip);
+    fails.delete(who);
     const sid = crypto.randomBytes(24).toString('base64url');
     const now = Date.now();
     for (const [k, s] of Object.entries(secrets.sessions)) if (s.exp < now) delete secrets.sessions[k];
-    secrets.sessions[sid] = { exp: now + 60 * 864e5, ip, ua: String(req.headers['user-agent'] || '').slice(0, 80) };
+    // The phone app stays signed in for a year; the admin page for 60 days.
+    const days = app ? 365 : 60;
+    secrets.sessions[sid] = { exp: now + days * 864e5, ip, ua: String(req.headers['user-agent'] || '').slice(0, 80), app: !!app };
     saveSecrets();
-    return send(res, 200, { ok: true }, { 'Set-Cookie': 'hq_admin=' + sid + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + 60 * 86400 });
+    const https = /https/.test(String(req.headers['cf-visitor'] || req.headers['x-forwarded-proto'] || ''));
+    return send(res, 200, { ok: true }, { 'Set-Cookie': 'hq_admin=' + sid + '; Path=/; HttpOnly; ' + (https ? 'Secure; ' : '') + 'SameSite=Lax; Max-Age=' + days * 86400 });
   }
   if (p === '/api/logout' && m === 'POST') {
     const sid = cookies(req).hq_admin; if (sid) { delete secrets.sessions[sid]; saveSecrets(); }
@@ -775,6 +780,7 @@ const server = http.createServer(async (req, res) => {
     // frame right away (Cloudflare otherwise tells browsers to keep files for 4 hours).
     if (FROM_SOURCE) {
       const isAdminPage = (isAdminHost(req) && (url.pathname === '/' || url.pathname === '/index.html')) || url.pathname === '/admin' || url.pathname === '/admin/';
+      if (url.pathname === '/app' || url.pathname === '/app/' || (isAppHost(req) && (url.pathname === '/' || url.pathname === '/index.html'))) return servePage(res, 'app.html');
       if (isAdminPage || url.pathname === '/' || url.pathname === '/index.html') return servePage(res, isAdminPage ? 'admin.html' : 'index.html');
       const vm = url.pathname.match(/^\/v\/[\w-]+(\/.*)$/);
       if (vm && SOURCE_OK.test(vm[1]) && await serveFile(res, safeJoin(ROOT, vm[1].slice(1)), 'public, max-age=31536000, immutable')) return;
