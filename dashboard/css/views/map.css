@@ -34,3 +34,6 @@
 .mp-pin--dest > i { background: var(--alert); border: 3px solid #fff; }
 .leaflet-container { font-family: var(--sans); }
 .mp-tiles { filter: saturate(.55) sepia(.12) brightness(1.02); }
+.mp-tbtn.is-on { background: var(--ink); color: var(--paper); }
+.mp-delay { font-style: normal; color: var(--alert); font-weight: 600; }
+.mp-trip.is-on .mp-delay { color: #F2B39E; }

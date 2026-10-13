@@ -451,6 +451,14 @@ async function api(req, res, url) {
       try { return send(res, 200, await X.geocode(url.searchParams.get('q') || '', st.lat != null ? { lat: st.lat, lon: st.lon } : null)); }
       catch (e) { return send(res, 409, { error: e.message }); }
     }
+    const tm = p.match(/^\/api\/geo\/traffic\/(\d+)\/(\d+)\/(\d+)\.png$/);
+    if (tm) {
+      try {
+        const buf = await X.trafficTile(+tm[1], +tm[2], +tm[3]);
+        res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'private, max-age=120' });
+        return res.end(buf);
+      } catch (e) { return send(res, e.status || 409, { error: e.message }); }
+    }
     if (p === '/api/geo/route') {
       if (st.lat == null) return send(res, 400, { error: 'Set your home address in Admin → Settings first' });
       const to = { lat: +url.searchParams.get('lat'), lon: +url.searchParams.get('lon') };
@@ -558,6 +566,7 @@ async function api(req, res, url) {
       return send(res, 200, {
         settings: state.settings, plex: { url: secrets.plex.url, hasToken: !!secrets.plex.token, status: plexStatus },
         icloud: { set: !!secrets.icloudAlbum, status: X.albumStatus() },
+        tomtom: X.tomtomStatus(),
         spotify: { clientId: (secrets.spotify || {}).clientId || '', hasSecret: !!(secrets.spotify || {}).clientSecret, connected: !!(secrets.spotify || {}).refreshToken, status: X.spotifyStatus(), redirect: spotifyRedirect(req) },
         apiToken: secrets.apiToken, isMac: IS_MAC, hostname: os.hostname(), port: PORT,
         addresses: Object.values(os.networkInterfaces()).flat().filter(a => a && a.family === 'IPv4' && !a.internal).map(a => a.address),
@@ -573,6 +582,12 @@ async function api(req, res, url) {
       saveSecrets();
       if (b.settings) { commit({ settings: Object.assign({}, state.settings, b.settings) }, 'admin'); refreshWeather(); }
       return send(res, 200, { ok: true });
+    }
+    if (sub === 'tomtom' && m === 'POST') {
+      const b = await readBody(req);
+      const st = await X.setTomtomKey(b.clear ? '' : b.key);
+      if (st.ok === false) return send(res, 409, { error: st.error || 'TomTom didn’t accept that key' });
+      return send(res, 200, { ok: true, status: st });
     }
     if (sub === 'address-search' && m === 'GET') {
       try { return send(res, 200, await X.geocode(url.searchParams.get('q') || '')); } catch (e) { return send(res, 409, { error: e.message }); }

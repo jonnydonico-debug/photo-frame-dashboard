@@ -26,11 +26,24 @@
       maxZoom: 19, attribution: '© OpenStreetMap contributors', className: 'mp-tiles'
     }).addTo(V.map);
     L.control.zoom({ position: 'bottomright' }).addTo(V.map);
+    // Live traffic on the roads (TomTom, through the Mac mini so the key stays private)
+    V.traffic = L.tileLayer('/api/geo/traffic/{z}/{x}/{y}.png?t={t}', { maxZoom: 19, maxNativeZoom: 18, opacity: .95, zIndex: 5, t: Date.now(), className: 'mp-traffic' });
+    syncTraffic();
     V.layers = L.layerGroup().addTo(V.map);
     V.fixed = L.layerGroup().addTo(V.map);
     V.map.on('click', function (e) { setDest({ name: 'Dropped pin', label: e.latlng.lat.toFixed(5) + ', ' + e.latlng.lng.toFixed(5), lat: e.latlng.lat, lon: e.latlng.lng }, true); });
     drawFixed();
     return true;
+  }
+  function trafficOn() { return !!(D.settings && D.settings.traffic); }
+  function wantTraffic() { try { return localStorage.getItem('hq.map.traffic') !== '0'; } catch (e) { return true; } }
+  function syncTraffic() {
+    if (!V.map || !V.traffic) return;
+    var show = trafficOn() && wantTraffic();
+    if (show && !V.map.hasLayer(V.traffic)) V.traffic.addTo(V.map);
+    if (!show && V.map.hasLayer(V.traffic)) V.map.removeLayer(V.traffic);
+    var b = V.el.querySelector('[data-traffic]');
+    if (b) { b.hidden = !trafficOn(); b.classList.toggle('is-on', show); }
   }
   function drawFixed() {
     var L = window.L, h = home();
@@ -56,7 +69,8 @@
       V.routes = r; drawRoute(); paintCard();
     }).catch(function (e) { if (my === V.seq) { V.routes = { error: e.message }; paintCard(); } });
   }
-  function drawRoute() {
+  var JAM = ['#C88F3E', '#E0A33B', '#D9732B', '#C0392B', '#7A1F1F']; // by TomTom's magnitudeOfDelay 0–4
+  function drawRoute(noFit) {
     var L = window.L, r = V.routes, h = home();
     V.layers.eachLayer(function (l) { if (l instanceof L.Polyline) V.layers.removeLayer(l); });
     if (!r) return;
@@ -65,7 +79,12 @@
     if (r[other] && r[other].line) L.polyline(r[other].line, { color: '#7A756B', weight: 4, opacity: .45, dashArray: '6 8' }).addTo(V.layers);
     if (r[m] && r[m].line) {
       var line = L.polyline(r[m].line, { color: m === 'drive' ? '#A8644A' : '#5F7D57', weight: 7, opacity: .9 }).addTo(V.layers);
-      V.map.fitBounds(line.getBounds().extend([h.lat, h.lon]), { paddingTopLeft: [440, 40], paddingBottomRight: [40, 40] });
+      // Slow stretches on the drive, coloured by how bad the delay is
+      if (m === 'drive' && r.drive.traffic) r.drive.traffic.forEach(function (t) {
+        var seg = r.drive.line.slice(t.from, t.to + 1);
+        if (seg.length > 1) L.polyline(seg, { color: JAM[Math.max(1, Math.min(4, t.mag))], weight: 9, opacity: .95, lineCap: 'round' }).addTo(V.layers);
+      });
+      if (!noFit) V.map.fitBounds(line.getBounds().extend([h.lat, h.lon]), { paddingTopLeft: [440, 40], paddingBottomRight: [40, 40] });
     }
   }
 
@@ -75,7 +94,8 @@
     if (!r) return '<button class="mp-trip" disabled>' + App.icon(kind === 'drive' ? 'car' : 'walk', 30) + '<span><small>' + label + '</small><b>…</b></span></button>';
     if (!t || t.error) return '<button class="mp-trip" disabled>' + App.icon(kind === 'drive' ? 'car' : 'walk', 30) + '<span><small>' + label + '</small><b>–</b></span></button>';
     return '<button class="mp-trip' + (V.mode === kind ? ' is-on' : '') + '" data-mode="' + kind + '">' + App.icon(kind === 'drive' ? 'car' : 'walk', 30) +
-      '<span><small>' + label + '</small><b class="num">' + App.fmt.mins(t.min) + '</b><em>' + t.mi + ' mi</em></span></button>';
+      '<span><small>' + label + (t.live ? ' · live traffic' : '') + '</small><b class="num">' + App.fmt.mins(t.min) + '</b><em>' + t.mi + ' mi' +
+      (t.live ? (t.delay > 0 ? ' · <i class="mp-delay">+' + App.fmt.mins(t.delay) + ' traffic</i>' : ' · no delays') : '') + '</em></span></button>';
   }
   function paintCard() {
     var c = V.el.querySelector('.mp-card'), d = V.dest;
@@ -111,7 +131,8 @@
           '  <form class="mp-search"><span>' + App.icon('search', 24) + '</span><input type="search" placeholder="Where to?" enterkeyhint="search"><button type="button" class="mp-x" data-clear aria-label="Clear">' + App.icon('x', 22) + '</button></form>' +
           '  <div class="mp-results" hidden></div>' +
           '  <div class="mp-card card"></div>' +
-          '  <div class="mp-quick">' + BART.map(function (b, i) { return '<button class="chip" data-bart="' + i + '">' + App.icon('train', 18) + ' ' + b.name.replace(' BART', '') + '</button>'; }).join('') + '</div>' +
+          '  <div class="mp-quick">' + BART.map(function (b, i) { return '<button class="chip" data-bart="' + i + '">' + App.icon('train', 18) + ' ' + b.name.replace(' BART', '') + '</button>'; }).join('') +
+          '<button class="chip mp-tbtn" data-traffic hidden>' + App.icon('car', 18) + ' Traffic</button></div>' +
           '</div>' +
           '<div class="mp-off" hidden>Map needs an internet connection.</div></div>';
         var input = el.querySelector('.mp-search input');
@@ -128,6 +149,7 @@
           if ((t = e.target.closest('[data-res]'))) { var x = el.querySelector('.mp-results')._list[+t.dataset.res]; results(null); input.value = x.name; setDest(x, false); return; }
           if ((t = e.target.closest('[data-mode]'))) { V.mode = t.dataset.mode; drawRoute(); paintCard(); return; }
           if ((t = e.target.closest('[data-bart]'))) { setDest(BART[+t.dataset.bart], false); return; }
+          if (e.target.closest('[data-traffic]')) { var on = !(wantTraffic()); try { localStorage.setItem('hq.map.traffic', on ? '1' : '0'); } catch (e3) {} syncTraffic(); return; }
           if (e.target.closest('[data-clear]')) { input.value = ''; results(null); V.dest = null; V.routes = null; if (V.layers) V.layers.clearLayers(); paintCard(); }
         });
       }
@@ -137,5 +159,14 @@
       paintCard();
     }
   });
-  App.on('data', function () { if (V.map) drawFixed(); });
+  App.on('data', function () { if (V.map) { drawFixed(); syncTraffic(); } });
+  // Keep traffic fresh while the Map tab is open: new tiles and a re-checked route every 2 minutes.
+  setInterval(function () {
+    if (App.current !== 'map' || !V.map || !trafficOn()) return;
+    if (V.map.hasLayer(V.traffic)) { V.traffic.options.t = Date.now(); V.traffic.redraw(); }
+    if (V.dest && home()) {
+      var d = V.dest, my = V.seq;
+      get('/api/geo/route?lat=' + d.lat + '&lon=' + d.lon).then(function (r) { if (my === V.seq && V.dest === d) { V.routes = r; drawRoute(true); paintCard(); } }).catch(function () {});
+    }
+  }, 120000);
 })();

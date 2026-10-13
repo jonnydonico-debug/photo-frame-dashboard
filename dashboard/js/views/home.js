@@ -50,7 +50,8 @@
   // ------------------------------------------------------------ BART
   function trip(c, kind) {
     var t = c && c[kind];
-    return t ? '<span class="hm-trip">' + App.icon(kind === 'walk' ? 'walk' : 'car', 18) + '<b class="num">' + t.min + '</b> min<small>' + t.mi + ' mi</small></span>' : '';
+    return t ? '<span class="hm-trip">' + App.icon(kind === 'walk' ? 'walk' : 'car', 18) + '<b class="num">' + t.min + '</b> min' +
+      (t.delay > 0 ? '<small class="hm-delay">+' + t.delay + ' traffic</small>' : '<small>' + t.mi + ' mi</small>') + '</span>' : '';
   }
   function station(code) {
     var B = D.bart || {}, C = D.commute || {};

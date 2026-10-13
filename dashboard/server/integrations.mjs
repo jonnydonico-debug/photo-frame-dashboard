@@ -44,8 +44,65 @@ export function createIntegrations(ctx) {
     if (!rt) throw new Error('No route');
     return { min: Math.max(1, Math.round(rt.duration / 60)), mi: Math.round(rt.distance / MI * 10) / 10, line: rt.geometry.coordinates.map(c => [c[1], c[0]]) };
   }
+  // ---------------------------------------------------------------- TomTom: live-traffic driving + traffic map tiles
+  // Optional. With a key (Admin → Settings) drive times include current traffic, and the Map tab can
+  // show traffic on the roads and along the route. The key never leaves the Mac mini.
+  let ttStatus = { ok: null };
+  async function ttRoute(from, to) {
+    const key = secrets.tomtomKey;
+    const url = 'https://api.tomtom.com/routing/1/calculateRoute/' + from.lat + ',' + from.lon + ':' + to.lat + ',' + to.lon +
+      '/json?key=' + encodeURIComponent(key) + '&traffic=true&travelMode=car&routeType=fastest&departAt=now&sectionType=traffic&computeTravelTimeFor=all';
+    try {
+      const r = await j(url, { timeout: 12000 });
+      const rt = r.routes && r.routes[0];
+      if (!rt) throw new Error('No route');
+      const sm = rt.summary, pts = [].concat(...rt.legs.map(l => l.points)).map(p => [p.latitude, p.longitude]);
+      const traffic = (rt.sections || []).filter(x => x.sectionType === 'TRAFFIC').map(x => ({
+        from: x.startPointIndex, to: x.endPointIndex, mag: x.magnitudeOfDelay || 0, kind: x.simpleCategory || 'JAM',
+        delay: Math.round((x.delayInSeconds || 0) / 60)
+      }));
+      ttStatus = { ok: true, checked: new Date().toISOString() };
+      return { min: Math.max(1, Math.round(sm.travelTimeInSeconds / 60)), mi: Math.round(sm.lengthInMeters / MI * 10) / 10, line: pts,
+        delay: Math.round((sm.trafficDelayInSeconds || 0) / 60), usual: sm.noTrafficTravelTimeInSeconds ? Math.max(1, Math.round(sm.noTrafficTravelTimeInSeconds / 60)) : null,
+        traffic, live: true };
+    } catch (e) {
+      const bad = e.status === 403 || e.status === 401;
+      ttStatus = { ok: false, error: bad ? 'TomTom rejected the key' : e.message, checked: new Date().toISOString() };
+      throw e;
+    }
+  }
+  async function driveRoute(from, to) {
+    if (secrets.tomtomKey) { try { return await ttRoute(from, to); } catch (e) { log('tomtom:', ttStatus.error); } }
+    return route(from, to, 'drive');
+  }
+  const tileCache = new Map();
+  async function trafficTile(z, x, y) {
+    if (!secrets.tomtomKey) throw Object.assign(new Error('No TomTom key'), { status: 404 });
+    if (![z, x, y].every(n => Number.isInteger(n) && n >= 0) || z > 22) throw Object.assign(new Error('Bad tile'), { status: 400 });
+    const k = z + '/' + x + '/' + y, hit = tileCache.get(k);
+    if (hit && Date.now() - hit.at < 120000) return hit.buf; // traffic changes every couple of minutes
+    const r = await fetch('https://api.tomtom.com/traffic/map/4/tile/flow/relative0/' + k + '.png?tileSize=256&key=' + encodeURIComponent(secrets.tomtomKey), { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) throw Object.assign(new Error('TomTom tile ' + r.status), { status: r.status === 403 ? 403 : 409 });
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (tileCache.size > 400) tileCache.clear();
+    tileCache.set(k, { at: Date.now(), buf });
+    return buf;
+  }
+  async function setTomtomKey(key) {
+    secrets.tomtomKey = String(key || '').trim(); saveSecrets();
+    ttStatus = { ok: null };
+    if (secrets.tomtomKey) {
+      const st = S().settings || {};
+      const from = st.lat != null ? { lat: st.lat, lon: st.lon } : BART_STATIONS[0], to = BART_STATIONS[1];
+      try { await ttRoute(from, to); } catch (e) { if (/rejected/.test(ttStatus.error || '')) { secrets.tomtomKey = ''; saveSecrets(); } return ttStatus; }
+    }
+    commit({ settings: Object.assign({}, S().settings, { traffic: !!secrets.tomtomKey && ttStatus.ok !== false }) }, 'server');
+    refreshCommute().catch(() => {});
+    return ttStatus;
+  }
+
   async function routeBoth(from, to) {
-    const [walk, drive] = await Promise.all([route(from, to, 'walk').catch(e => ({ error: e.message })), route(from, to, 'drive').catch(e => ({ error: e.message }))]);
+    const [walk, drive] = await Promise.all([route(from, to, 'walk').catch(e => ({ error: e.message })), driveRoute(from, to).catch(e => ({ error: e.message }))]);
     return { walk, drive };
   }
   async function refreshCommute() {
@@ -59,7 +116,7 @@ export function createIntegrations(ctx) {
       const old = same && (prev.stations || []).find(x => x.code === s.code) || {};
       stations.push(Object.assign({}, s, {
         walk: r.walk.error ? old.walk || null : { min: r.walk.min, mi: r.walk.mi },
-        drive: r.drive.error ? old.drive || null : { min: r.drive.min, mi: r.drive.mi }
+        drive: r.drive.error ? old.drive || null : { min: r.drive.min, mi: r.drive.mi, delay: r.drive.delay || 0, live: !!r.drive.live }
       }));
     }
     commit({ commute: { from: st.address || st.place, stations, updated: new Date().toISOString() } }, 'server');
@@ -510,7 +567,7 @@ export function createIntegrations(ctx) {
   }
 
   return {
-    start, geocode, routeBoth, refreshCommute, refreshBart, syncAlbum, albumStatus: () => albumStatus, albumToken, resolveAlbumLink,
+    start, geocode, routeBoth, refreshCommute, trafficTile, setTomtomKey, tomtomStatus: () => ({ set: !!secrets.tomtomKey, status: ttStatus }), refreshBart, syncAlbum, albumStatus: () => albumStatus, albumToken, resolveAlbumLink,
     sonos, spotifyAuthUrl, spotifyCallback, spotifyCommand, spotifyLibrary, spotifySearch, spotifyItems, spotifyStatus: () => spStatus,
     spotifyDisconnect() { secrets.spotify = { clientId: SP().clientId, clientSecret: SP().clientSecret }; saveSecrets(); clearInterval(spTimer); spState = { connected: false }; commit({ music: { connected: false } }, 'server'); },
     BART_STATIONS

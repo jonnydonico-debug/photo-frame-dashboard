@@ -292,17 +292,23 @@ function home() {
     </section>` + listHTML('cameras');
 }
 function settings() {
-  const st = S.settings || {}, P = cfg.plex;
+  const st = S.settings || {}, P = cfg.plex, TT = cfg.tomtom || { set: false, status: {} };
   return `<section class="block"><div class="block-h"><h2 class="serif">Dashboard</h2></div>
       <label class="f f--wide"><span class="f-l">Name</span><input data-setting="title" value="${esc(st.title || 'Home HQ')}"></label>
       <div class="f f--wide"><span class="f-l">Tabs on the frame</span><div class="chips">${VIEWS.map(([v, l]) => `<button class="chip ${(st.hiddenViews || []).includes(v) ? '' : 'is-on'}" data-view="${v}">${l}</button>`).join('')}</div></div>
     </section>
     <section class="block"><div class="block-h"><h2 class="serif">Home address</h2></div>
       <p class="intro">${st.address ? '<b>' + esc(st.address) + '</b><br>' : ''}Used for the weather, the Map tab, and walking/driving times to BART.</p>
-      ${S.commute && S.commute.stations ? '<ul class="status">' + S.commute.stations.map(x => `<li><b>${esc(x.name.replace('El Cerrito ', ''))}</b> walk ${x.walk ? x.walk.min + ' min · ' + x.walk.mi + ' mi' : '–'} · drive ${x.drive ? x.drive.min + ' min · ' + x.drive.mi + ' mi' : '–'}</li>`).join('') + '</ul>' : ''}
+      ${S.commute && S.commute.stations ? '<ul class="status">' + S.commute.stations.map(x => `<li><b>${esc(x.name.replace('El Cerrito ', ''))}</b> walk ${x.walk ? x.walk.min + ' min · ' + x.walk.mi + ' mi' : '–'} · drive ${x.drive ? x.drive.min + ' min · ' + x.drive.mi + ' mi' + (x.drive.live ? ' (live traffic)' : '') : '–'}</li>`).join('') + '</ul>' : ''}
       <div class="row"><input id="addr-q" placeholder="Street address, city" value=""><button class="btn" data-addr>Search</button></div>
       <div id="addr-res" class="chips"></div>
       <label class="f"><span class="f-l">Units</span><select data-setting="units"><option value="fahrenheit" ${st.units !== 'celsius' ? 'selected' : ''}>°F</option><option value="celsius" ${st.units === 'celsius' ? 'selected' : ''}>°C</option></select></label>
+    </section>
+    <section class="block"><div class="block-h"><h2 class="serif">Live traffic</h2><span class="muted">${TT.set ? (TT.status.ok === false ? 'problem' : 'on') : 'off'}</span></div>
+      <p class="intro">A free TomTom key adds current traffic to the BART drive times, and lets the Map tab show traffic on the roads and along your route. The key stays on the Mac mini.</p>
+      <ol class="steps"><li>Sign up free at <a href="https://developer.tomtom.com" target="_blank" rel="noopener">developer.tomtom.com</a>.</li><li>Open <b>Dashboard → Keys</b> and copy the key it made for you.</li><li>Paste it below and tap Save.</li></ol>
+      ${TT.status && TT.status.ok === false ? `<p class="warn">${esc(TT.status.error || 'TomTom didn’t answer')}</p>` : ''}
+      <div class="row"><input id="tt-key" type="password" autocomplete="off" placeholder="${TT.set ? '•••••••• (saved)' : 'TomTom API key'}"><button class="btn btn--solid" data-ttsave>Save</button>${TT.set ? '<button class="btn" data-ttoff>Remove</button>' : ''}</div>
     </section>
     <section class="block"><div class="block-h"><h2 class="serif">Plex</h2><span class="muted">${P.status.ok ? 'connected' : 'off'}</span></div>
       <p class="intro">Shows what’s playing on the Home tab, and lets you (or the agent) rescan libraries. Your Plex token: Plex Web → any item → ⋯ → Get Info → View XML, copy <code>X-Plex-Token</code> from the address bar.</p>
@@ -513,6 +519,14 @@ document.addEventListener('click', async e => {
       await call('/api/admin/config', { method: 'POST', body: { settings: { lat: r.lat, lon: r.lon, place: r.name.split(',')[0] } } });
       await call('/api/admin/weather/refresh', { method: 'POST' }); flash('Weather set'); return reload();
     }
+    if (d.ttsave != null) {
+      const key = $('#tt-key').value.trim(); if (!key) return flash('Paste your TomTom key first', true);
+      flash('Checking the key…');
+      try { await call('/api/admin/tomtom', { method: 'POST', body: { key } }); flash('Live traffic is on'); }
+      catch (e) { flash(e.message, true); }
+      cfg = await call('/api/admin/config'); return render();
+    }
+    if (d.ttoff != null) { await call('/api/admin/tomtom', { method: 'POST', body: { clear: true } }); flash('Live traffic off'); cfg = await call('/api/admin/config'); return render(); }
     if (d.plexsave != null) {
       const body = { plex: { url: $('#plex-url').value.trim() } }; const tok = $('#plex-token').value.trim(); if (tok) body.plex.token = tok;
       await call('/api/admin/config', { method: 'POST', body });
