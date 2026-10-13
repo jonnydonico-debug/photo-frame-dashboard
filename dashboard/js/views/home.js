@@ -59,10 +59,7 @@
     var c = (C.stations || []).filter(function (x) { return x.code === code; })[0];
     var name = (s && s.name) || (c && c.name) || { PLZA: 'El Cerrito Plaza', DELN: 'El Cerrito del Norte' }[code] || code;
     var walk = c && c.walk ? c.walk.min : null;
-    // Only trains you can still walk to in time
-    var lines = ((s && s.lines) || []).map(function (l) {
-      return Object.assign({}, l, { mins: l.mins.filter(function (m) { return walk == null || m >= walk; }) });
-    }).filter(function (l) { return l.mins.length; });
+    var lines = (s && s.lines) || [];
     // Room for 3 trains a station, or 2 while a service alert is showing
     var rows = lines.slice(0, B.advisory ? 2 : 3).map(function (l) {
       return '<div class="hm-line" style="--lc:' + App.esc(l.color) + '"><i></i><span class="hm-dest">' + App.esc(l.dest) + '</span>' +
@@ -72,7 +69,7 @@
     }).join('');
     return '<div class="hm-stn">' +
       '<div class="hm-stn-h"><b>' + App.esc(name) + '</b>' + trip(c, 'walk') + trip(c, 'drive') + '</div>' +
-      (rows || '<div class="hm-none">' + (B.error ? 'Times unavailable right now' : (D.bart ? 'No trains you can make right now' : 'Loading times…')) + '</div>') +
+      (rows || '<div class="hm-none">' + (B.error ? 'Times unavailable right now' : (D.bart ? 'No trains scheduled' : 'Loading times…')) + '</div>') +
       '</div>';
   }
   function bart() {

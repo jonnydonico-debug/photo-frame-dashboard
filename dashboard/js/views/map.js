@@ -27,7 +27,8 @@
     }).addTo(V.map);
     L.control.zoom({ position: 'bottomright' }).addTo(V.map);
     // Live traffic on the roads (TomTom, through the Mac mini so the key stays private)
-    V.traffic = L.tileLayer('/api/geo/traffic/{z}/{x}/{y}.png?t={t}', { maxZoom: 19, maxNativeZoom: 18, opacity: .95, zIndex: 5, t: Date.now(), className: 'mp-traffic' });
+    // Tiles from one zoom level out, drawn at double size: the traffic lines come out twice as bold.
+    V.traffic = L.tileLayer('/api/geo/traffic/{z}/{x}/{y}.png?t={t}', { tileSize: 512, zoomOffset: -1, minZoom: 1, maxZoom: 19, maxNativeZoom: 18, opacity: .95, zIndex: 5, t: Date.now(), className: 'mp-traffic' });
     syncTraffic();
     V.layers = L.layerGroup().addTo(V.map);
     V.fixed = L.layerGroup().addTo(V.map);
@@ -44,6 +45,7 @@
     if (!show && V.map.hasLayer(V.traffic)) V.map.removeLayer(V.traffic);
     var b = V.el.querySelector('[data-traffic]');
     if (b) { b.hidden = !trafficOn(); b.classList.toggle('is-on', show); }
+    V.el.querySelector('.mp').classList.toggle('mp--traffic', show);
   }
   function drawFixed() {
     var L = window.L, h = home();
@@ -104,7 +106,7 @@
       return;
     }
     if (!d) {
-      c.innerHTML = '<div class="label">From home</div><p class="mp-p">Search for a place, tap a BART pin, or tap anywhere on the map.</p>';
+      c.innerHTML = '<div class="label">From home</div><p class="mp-p">Search for a place, tap a BART pin, or tap anywhere on the map.</p>' + legend();
       return;
     }
     c.innerHTML = '<div class="label">From home to</div><h2 class="serif mp-h">' + App.esc(d.name) + '</h2>' +
@@ -112,6 +114,10 @@
       (V.routes && V.routes.error ? '<p class="mp-p">' + App.esc(V.routes.error) + '</p>' : '<div class="mp-trips">' + trip('drive') + trip('walk') + '</div>');
   }
 
+  function legend() {
+    if (!trafficOn() || !wantTraffic()) return '';
+    return '<div class="mp-legend"><span><i style="background:#3DAA5C"></i>Moving</span><span><i style="background:#F2A33A"></i>Slow</span><span><i style="background:#D8352A"></i>Heavy</span><span><i style="background:#7A1F1F"></i>Stopped</span></div>';
+  }
   function results(list) {
     var box = V.el.querySelector('.mp-results');
     if (!list) { box.innerHTML = ''; box.hidden = true; return; }
@@ -149,13 +155,18 @@
           if ((t = e.target.closest('[data-res]'))) { var x = el.querySelector('.mp-results')._list[+t.dataset.res]; results(null); input.value = x.name; setDest(x, false); return; }
           if ((t = e.target.closest('[data-mode]'))) { V.mode = t.dataset.mode; drawRoute(); paintCard(); return; }
           if ((t = e.target.closest('[data-bart]'))) { setDest(BART[+t.dataset.bart], false); return; }
-          if (e.target.closest('[data-traffic]')) { var on = !(wantTraffic()); try { localStorage.setItem('hq.map.traffic', on ? '1' : '0'); } catch (e3) {} syncTraffic(); return; }
+          if (e.target.closest('[data-traffic]')) { var on = !(wantTraffic()); try { localStorage.setItem('hq.map.traffic', on ? '1' : '0'); } catch (e3) {} syncTraffic(); paintCard(); return; }
           if (e.target.closest('[data-clear]')) { input.value = ''; results(null); V.dest = null; V.routes = null; if (V.layers) V.layers.clearLayers(); paintCard(); }
         });
       }
       if (!window.L) { el.querySelector('.mp-off').hidden = false; paintCard(); return; }
       initMap();
-      setTimeout(function () { V.map.invalidateSize(); }, 50);
+      setTimeout(function () {
+        V.map.invalidateSize();
+        // No trip picked: zoom out to the freeways around home for a traffic overview.
+        var h = home();
+        if (!V.dest && h) V.map.setView([h.lat, h.lon], trafficOn() ? 12 : 14, { animate: false });
+      }, 50);
       paintCard();
     }
   });

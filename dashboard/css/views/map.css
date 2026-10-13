@@ -34,6 +34,11 @@
 .mp-pin--dest > i { background: var(--alert); border: 3px solid #fff; }
 .leaflet-container { font-family: var(--sans); }
 .mp-tiles { filter: saturate(.55) sepia(.12) brightness(1.02); }
-.mp-tbtn.is-on { background: var(--ink); color: var(--paper); }
+/* With traffic showing, mute the base map so OSM's pink freeways don't read as congestion */
+.mp--traffic .mp-tiles { filter: grayscale(1) sepia(.18) brightness(1.06) contrast(.92); }
+.mp-quick .chip.mp-tbtn.is-on { background: var(--ink); color: var(--paper); }
 .mp-delay { font-style: normal; color: var(--alert); font-weight: 600; }
 .mp-trip.is-on .mp-delay { color: #F2B39E; }
+.mp-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 12px; font-size: 15px; color: var(--ink-2); }
+.mp-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.mp-legend i { width: 18px; height: 6px; border-radius: 3px; display: inline-block; }
