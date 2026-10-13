@@ -247,7 +247,9 @@ const AG = createAgents({
     tv: { cmd: (c, a, t) => TV.cmd(c, a, t) }, govee: GV,
     announce: text => broadcast({ type: 'announce', text, icon: 'bell' })
   },
-  extraTools: () => [PLX]
+  extraTools: () => [PLX],
+  notify: (person, text) => IM.notify(person, text),
+  announce: text => broadcast({ type: 'announce', text, icon: 'bell' })
 });
 PLX = createPlexTools({ plex: (p, o) => plex(p, o), plexOk: () => !!(secrets.plex.url && secrets.plex.token), settings: () => AG.settings(), log });
 const IM = createIMessage({ secrets, saveSecrets: () => saveSecrets(), log, agents: AG });
@@ -659,6 +661,9 @@ async function api(req, res, url) {
         if (a === 'chat') return send(res, 200, await AG.run(String(b.id), { text: String(b.text || ''), who: String(b.who || 'jd'), channel: 'admin', convo: 'admin:' + b.id }));
         if (a === 'clear-chat') { AG.clearHistory('admin:' + b.id); return send(res, 200, { ok: true }); }
         if (a === 'memory') { if (b.delete) AG.deleteMemory(String(b.delete)); else if (b.text) AG.addMemory(String(b.text), 'you'); return send(res, 200, { ok: true }); }
+        if (a === 'schedule') return send(res, 200, AG.saveSchedule(b));
+        if (a === 'schedule-delete') { AG.deleteSchedule(String(b.id)); return send(res, 200, { ok: true }); }
+        if (a === 'schedule-run') return send(res, 200, await AG.runSchedule(String(b.id)));
         if (a === 'settings') return send(res, 200, AG.setSettings({ plex: b.plex ? { moviesPath: String(b.plex.moviesPath || '').trim(), inboxPath: String(b.plex.inboxPath || '').trim() } : undefined }));
       } catch (e) { return send(res, e.status && e.status < 500 ? e.status : 409, { error: e.message }); }
       return send(res, 404, { error: 'Not found' });
@@ -911,5 +916,5 @@ server.listen(PORT, HOST, () => {
   log('  Dashboard:  http://' + os.hostname().replace(/\.local$/, '') + '.local:' + PORT + '/');
   addrs.forEach(a => log('              http://' + a + ':' + PORT + '/'));
   log('  Admin:      /admin');
-  refreshWeather(); refreshPlex(); X.start(); GV.start(); TV.start(); IM.start();
+  refreshWeather(); refreshPlex(); X.start(); GV.start(); TV.start(); IM.start(); AG.startSchedules();
 });

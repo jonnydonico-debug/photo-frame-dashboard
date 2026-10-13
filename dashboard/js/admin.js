@@ -287,7 +287,33 @@ function agents() {
     `<section class="block"><div class="block-h"><h2 class="serif">Your agents</h2><button class="btn btn--s btn--solid" data-agnew>+ New agent</button></div>
       <p class="intro">Agents share one memory and one activity log, and can hand work to the agents on their team (sub-agents report to the agent above them). The one marked “answers iMessage” gets your texts.</p>
       <div class="ag-tree">${tree(null, 0)}</div></section>` +
-    (agUI.edit ? agEditor(agUI.edit) : '') + (agUI.chat ? agChat(agUI.chat) : '') + agMemory() + agActivity();
+    (agUI.edit ? agEditor(agUI.edit) : '') + (agUI.chat ? agChat(agUI.chat) : '') + agSchedules() + agMemory() + agActivity();
+}
+const DAYN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+function agSchedules() {
+  const L = AGS.schedules || [], P = AGS.people || [], f = agUI.sched;
+  const toName = d => d === 'frame' ? 'the wall frame' : d === 'both' ? 'JD & Georgia' : d === 'none' ? 'nobody (log only)' : ((P.find(p => p.id === d) || {}).name || d);
+  const nextTxt = t => { if (!t) return ''; const d = new Date(t), today = new Date().toDateString() === d.toDateString(); return 'next ' + (today ? 'today' : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })) + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); };
+  const row = s => `<div class="ag-sch ${s.enabled ? '' : 'is-off'}"><div class="ag-sch-main"><b>${s.kind === 'task' ? '🗓️' : '⏰'} ${esc(s.title)}</b>
+      <small>${esc(s.whenText)} → ${esc(toName(s.deliver))}${s.kind === 'task' ? ' · ' + esc(agName(s.agent)) : ''}${s.enabled && s.next ? ' · ' + nextTxt(s.next) : ''}${s.lastStatus === 'error' ? ' · <span class="warn-t">last run failed: ' + esc(s.lastError || '') + '</span>' : s.lastStatus === 'skipped' ? ' · last one skipped (Mac was off)' : ''}</small>
+      <span class="ag-sch-p">${esc((s.prompt || '').slice(0, 200))}</span></div>
+      <div class="row wrap"><button class="tog ${s.enabled ? 'is-on' : ''}" data-schon="${esc(s.id)}">${s.enabled ? 'On' : 'Off'}</button>
+      <button class="btn btn--s" data-schrun="${esc(s.id)}">Run now</button><button class="btn btn--s" data-schedit="${esc(s.id)}">Edit</button><button class="btn btn--s btn--danger" data-schdel="${esc(s.id)}">Delete</button></div></div>`;
+  const form = f ? `<div class="ag-schform" id="sch-form">
+      <div class="grid2"><label class="f"><span class="f-l">Type</span><select id="sch-kind"><option value="reminder" ${f.kind !== 'task' ? 'selected' : ''}>Reminder (sends this text)</option><option value="task" ${f.kind === 'task' ? 'selected' : ''}>Job (an agent works it out and texts the answer)</option></select></label>
+      <label class="f"><span class="f-l">Title</span><input id="sch-title" value="${esc(f.title || '')}" placeholder="Morning brief"></label></div>
+      <label class="f f--wide"><span class="f-l">Message (reminder) or what the agent should do (job)</span><textarea id="sch-msg" rows="3" placeholder="Take the bins out  ·  or: weather, today’s calendar and the next trains, in a few lines">${esc(f.prompt || '')}</textarea></label>
+      <div class="grid2"><label class="f"><span class="f-l">Repeat</span><select id="sch-rep">${[['once', 'Once'], ['daily', 'Every day'], ['weekdays', 'Weekdays'], ['weekends', 'Weekends'], ['weekly', 'On these days…']].map(([v, l]) => `<option value="${v}" ${f.repeat === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="f"><span class="f-l">Time</span><input id="sch-time" type="time" value="${esc(f.time || '07:30')}"></label></div>
+      <div class="grid2"><label class="f"><span class="f-l">Date (for once)</span><input id="sch-date" type="date" value="${esc(f.date || '')}"></label>
+      <label class="f"><span class="f-l">Send to</span><select id="sch-to">${P.map(p => [p.id, p.name]).concat([['both', 'JD & Georgia'], ['frame', 'The wall frame'], ['none', 'Nobody (just log it)']]).map(([v, l]) => `<option value="${esc(v)}" ${f.to === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label></div>
+      <div class="f-l">Days (for “On these days…”)</div>
+      <div class="chips">${DAYN.map((n, i) => `<label class="chip ${(f.days || []).includes(i) ? 'is-on' : ''}"><input type="checkbox" data-schday="${i}" ${(f.days || []).includes(i) ? 'checked' : ''} style="display:none">${n}</label>`).join('')}</div>
+      <label class="f"><span class="f-l">Agent that does the job (jobs only)</span><select id="sch-agent">${AGS.agents.map(a => `<option value="${esc(a.id)}" ${f.agent === a.id ? 'selected' : ''}>${esc(a.icon + ' ' + a.name)}${a.enabled ? '' : ' (off)'}</option>`).join('')}</select></label>
+      <div class="row wrap" style="margin-top:10px"><button class="btn btn--solid" data-schsave>Save</button><button class="btn" data-schcancel>Cancel</button></div></div>` : '';
+  return `<section class="block" id="ag-sched"><div class="block-h"><h2 class="serif">Reminders &amp; scheduled jobs</h2>${f ? '' : '<button class="btn btn--s btn--solid" data-schnew>+ New</button>'}</div>
+    <p class="intro small">Reminders text a message at a set time. Jobs run an agent (for example a morning brief) and text you its answer. You can also set them by text: “remind me at 6 to call mom”, “every Sunday at 7pm text us the week ahead”. Texts go through iMessage, so it needs to be set up.</p>
+    ${form}<div class="ag-schs">${L.map(row).join('') || '<p class="muted">None yet.</p>'}</div></section>`;
 }
 function agEditor(a) {
   const tools = new Set(a.tools || []), can = new Set(a.can || []), P = (AGS.settings && AGS.settings.plex) || {};
@@ -529,7 +555,7 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', async e => {
   const t = e.target, ctx = itemAt(t);
-  if (t.dataset && t.dataset.agcan) { t.parentNode.classList.toggle('is-on', t.checked); return; }
+  if (t.dataset && (t.dataset.agcan || t.dataset.schday)) { t.parentNode.classList.toggle('is-on', t.checked); return; }
   if (t.id === 'ai-model') { await call('/api/admin/assistant', { method: 'POST', body: { model: t.value } }); flash('Model saved'); return; }
   if (t.hasAttribute && t.hasAttribute('data-aion')) {
     try { const r = await call('/api/admin/assistant', { method: 'POST', body: { enabled: t.checked } }); flash(t.checked ? (r.status && r.status.state === 'listening' ? 'Listening for texts' : 'On · see the steps above') : 'Off'); } catch (e2) { flash(e2.message, true); }
@@ -698,6 +724,30 @@ document.addEventListener('click', async e => {
     if (d.agmemadd != null) { const v = $('#ag-mem').value.trim(); if (!v) return; await call('/api/admin/agents/memory', { method: 'POST', body: { text: v } }); AGS = null; return loadAgents(); }
     if (d.agmemdel) { await call('/api/admin/agents/memory', { method: 'POST', body: { delete: d.agmemdel } }); AGS = null; return loadAgents(); }
     if (d.agrun) { agUI.open[d.agrun] = !agUI.open[d.agrun]; return render(); }
+    if (d.schnew != null) { agUI.sched = { kind: 'reminder', repeat: 'once', time: '', to: 'jd', agent: 'home', days: [] }; render(); const el = document.getElementById('sch-form'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    if (d.schcancel != null) { agUI.sched = null; return render(); }
+    if (d.schedit) {
+      const s = AGS.schedules.find(x => x.id === d.schedit); if (!s) return;
+      const w = s.when || {}, at = w.at ? new Date(w.at) : null, p2 = n => String(n).padStart(2, '0');
+      const days = w.days || [], rep = w.type === 'once' ? 'once' : w.type === 'daily' ? 'daily' : days.join() === '1,2,3,4,5' ? 'weekdays' : days.join() === '0,6' ? 'weekends' : 'weekly';
+      agUI.sched = { id: s.id, kind: s.kind, title: s.title, prompt: s.prompt, repeat: rep, days, to: s.deliver, agent: s.agent, enabled: s.enabled,
+        time: at ? p2(at.getHours()) + ':' + p2(at.getMinutes()) : w.time, date: at ? at.getFullYear() + '-' + p2(at.getMonth() + 1) + '-' + p2(at.getDate()) : '' };
+      render(); const el = document.getElementById('sch-form'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); return;
+    }
+    if (d.schsave != null) {
+      const f = agUI.sched, body = { id: f.id, kind: $('#sch-kind').value, title: $('#sch-title').value.trim(), message: $('#sch-msg').value.trim(), repeat: $('#sch-rep').value,
+        time: $('#sch-time').value, date: $('#sch-date').value || undefined, to: $('#sch-to').value, agent: $('#sch-agent').value, enabled: f.id ? f.enabled : true,
+        days: [...document.querySelectorAll('[data-schday]')].filter(i => i.checked).map(i => +i.dataset.schday) };
+      if (!body.message) return flash('Write the message or the job first', true);
+      try { await call('/api/admin/agents/schedule', { method: 'POST', body }); agUI.sched = null; flash('Saved'); AGS = null; return loadAgents(); } catch (e2) { return flash(e2.message, true); }
+    }
+    if (d.schon) { const s = AGS.schedules.find(x => x.id === d.schon); try { await call('/api/admin/agents/schedule', { method: 'POST', body: { id: d.schon, enabled: !(s && s.enabled) } }); AGS = null; return loadAgents(); } catch (e2) { return flash(e2.message, true); } }
+    if (d.schdel) { if (!confirm('Delete this reminder/job?')) return; await call('/api/admin/agents/schedule-delete', { method: 'POST', body: { id: d.schdel } }); AGS = null; return loadAgents(); }
+    if (d.schrun) {
+      flash('Running…');
+      try { const r = await call('/api/admin/agents/schedule-run', { method: 'POST', body: { id: d.schrun } }); flash(r.ok ? 'Done — sent' : (r.error || 'Failed'), !r.ok); } catch (e2) { flash(e2.message, true); }
+      AGS = null; return loadAgents();
+    }
     if (d.aikey != null) {
       const k = $('#ai-key').value.trim(); if (!k) return flash('Paste the key first', true);
       flash('Checking with Claude…');
@@ -845,6 +895,7 @@ async function boot() {
         if (msg.type === 'hello' && msg.rev > rev) reload().catch(() => {});
         if (msg.type === 'patch') { rev = Math.max(rev, msg.rev); if (msg.client === CLIENT) return; Object.assign(S, msg.patch); if (section !== 'agents') rerenderSoon(); }
         if (msg.type === 'agent-run') agentRunEvent(msg.run);
+        if (msg.type === 'agent-schedules' && AGS && section === 'agents' && !agUI.sched) loadAgents();
       };
     }
   } catch (e) { if (e.message !== 'login') $('#app').textContent = 'Can’t reach the Home HQ server: ' + e.message; }
