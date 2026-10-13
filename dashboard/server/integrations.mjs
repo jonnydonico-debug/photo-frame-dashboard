@@ -283,6 +283,19 @@ export function createIntegrations(ctx) {
   }
   const img = (images, w) => { if (!images || !images.length) return ''; const s = images.slice().sort((a, b) => (a.width || 0) - (b.width || 0)); return (s.find(i => (i.width || 0) >= w) || s[s.length - 1]).url; };
   let devicesAt = 0, devices = [];
+  const metaCache = new Map();
+  async function trackMeta(uri) {
+    if (metaCache.has(uri)) return metaCache.get(uri);
+    const id = (uri.match(/^spotify:track:([A-Za-z0-9]+)$/) || [])[1];
+    if (!id) return null;
+    try {
+      const t = await sp('GET', '/tracks/' + id);
+      const m = t && t.name ? { name: t.name, artists: t.artists || [], album: { name: (t.album && t.album.name) || '', images: (t.album && t.album.images) || [] }, uri, duration_ms: t.duration_ms } : null;
+      if (metaCache.size > 500) metaCache.clear();
+      metaCache.set(uri, m);
+      return m;
+    } catch (e) { log('spotify track lookup:', e.message); return null; }
+  }
   async function refreshSpotify() {
     if (!SP().refreshToken) return;
     try {
@@ -291,10 +304,15 @@ export function createIntegrations(ctx) {
       const t = secrets.musicTarget;
       if (t && t.sonos && !(p && p.item && p.is_playing)) {
         const room = await sonos.find(t.name).catch(() => null);
-        const n = room ? await sonos.nowPlaying(room).catch(() => null) : null;
-        if (n && n.title) p = { is_playing: n.playing, progress_ms: n.progress, shuffle_state: false, repeat_state: 'off', context: null,
+        const n = room ? await sonos.nowPlaying(room).catch(e => { log('sonos now playing:', e.message); return null; }) : null;
+        // Songs the dashboard queues carry no metadata (the Beam rejects it), so the speaker only
+        // knows the Spotify track id. Fill in title/artist/art from Spotify.
+        const m = n && n.uri && (!n.title || !n.art || /^(x-sonos|spotify)/i.test(n.title)) ? await trackMeta(n.uri) : null;
+        if (n && (n.title || m)) p = { is_playing: n.playing, progress_ms: n.progress, shuffle_state: false, repeat_state: 'off', context: null,
           device: { id: null, name: room.name, type: 'Speaker', volume_percent: n.volume, is_restricted: true },
-          item: { name: n.title, artists: [{ name: n.artist }], album: { name: n.album, images: n.art ? [{ url: n.art, width: 300 }] : [] }, uri: n.uri, duration_ms: n.duration } };
+          item: m && (!n.title || /^(x-sonos|spotify)/i.test(n.title))
+            ? Object.assign({}, m, { duration_ms: n.duration || m.duration_ms })
+            : { name: n.title, artists: [{ name: n.artist }], album: { name: n.album, images: n.art ? [{ url: n.art, width: 300 }] : (m ? m.album.images : []) }, uri: n.uri, duration_ms: n.duration } };
       }
       if (Date.now() - devicesAt > 30000) { devices = ((await sp('GET', '/me/player/devices')) || {}).devices || []; devicesAt = Date.now(); }
       const it = p && p.item;
