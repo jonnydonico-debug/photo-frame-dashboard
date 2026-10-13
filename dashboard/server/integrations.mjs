@@ -52,10 +52,15 @@ export function createIntegrations(ctx) {
     const st = S().settings || {};
     if (st.lat == null) return;
     const home = { lat: st.lat, lon: st.lon };
-    const stations = [];
+    const stations = [], prev = S().commute || {}, same = prev.from === (st.address || st.place);
     for (const s of BART_STATIONS) {
       const r = await routeBoth(home, s);
-      stations.push(Object.assign({}, s, { walk: r.walk.error ? null : { min: r.walk.min, mi: r.walk.mi }, drive: r.drive.error ? null : { min: r.drive.min, mi: r.drive.mi } }));
+      // If a lookup fails, keep the last good time for that station rather than blanking it.
+      const old = same && (prev.stations || []).find(x => x.code === s.code) || {};
+      stations.push(Object.assign({}, s, {
+        walk: r.walk.error ? old.walk || null : { min: r.walk.min, mi: r.walk.mi },
+        drive: r.drive.error ? old.drive || null : { min: r.drive.min, mi: r.drive.mi }
+      }));
     }
     commit({ commute: { from: st.address || st.place, stations, updated: new Date().toISOString() } }, 'server');
   }
@@ -499,7 +504,7 @@ export function createIntegrations(ctx) {
   function start() {
     startBart();
     refreshCommute().catch(e => log('commute:', e.message));
-    setInterval(() => refreshCommute().catch(() => {}), 24 * 3600e3);
+    setInterval(() => refreshCommute().catch(e => log('commute:', e.message)), 10 * 60e3); // every 10 min
     syncAlbum(); setInterval(syncAlbum, 20 * 60000);
     startSpotify();
   }
