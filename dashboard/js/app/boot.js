@@ -32,7 +32,8 @@
       var btn = f.querySelector('button'); btn.disabled = true; btn.textContent = 'Signing in…';
       App.post('/api/login', { pin: input.value, app: true })
         .then(function () { return App.get('/api/me'); })
-        .then(function (me) { if (!me.admin) throw new Error('Sign-in didn’t stick. Check that cookies are allowed.'); whoAmI(); })
+        .then(function (me) { if (!me.admin) throw new Error('Sign-in didn’t stick. Check that cookies are allowed.'); return HQ.reload(); })
+        .then(function () { if (!HQ.online()) return offline(); whoAmI(); })
         .catch(function (e2) { login(e2.message); });
     });
   }
@@ -74,7 +75,11 @@
   }
 
   (window.HQ_READY || Promise.resolve()).then(function () {
-    if (!window.HQ || !HQ.online()) return offline();
-    return App.get('/api/me').then(function (me) { if (me.admin) whoAmI(); else login(); });
+    return App.get('/api/me');
+  }).then(function (me) {
+    if (!me.admin) return login();
+    // Signed in: make sure the household data is loaded (it can't be read before sign-in).
+    if (!HQ.online()) return HQ.reload().then(function () { if (!HQ.online()) return offline(); whoAmI(); });
+    whoAmI();
   }).catch(function (e) { offline(e.message); });
 })();

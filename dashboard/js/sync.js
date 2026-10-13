@@ -89,6 +89,8 @@
   HQ.scene = function (id) { sceneHint = id; };
   // Re-read everything (the phone app calls this when it comes back to the foreground)
   HQ.refresh = function () { return load().then(refreshUI); };
+  // First load after signing in (the phone app can't read anything before that)
+  HQ.reload = function () { return load(); };
 
   // ------------------------------------------------------------ incoming
   var rerenderTimer = null;
@@ -131,6 +133,12 @@
     App.on('data', schedulePush);
     applySettings();
     connect();
+    // Couldn't load at start (server restarting, or not recognised as home yet): keep trying.
+    if (!online) {
+      var retry = setInterval(function () {
+        load().then(function () { if (!online) return; clearInterval(retry); connect(); refreshUI(); });
+      }, 20000);
+    }
     setInterval(schedulePush, 60000); // retry anything that failed to save
   };
   window.HQ_READY = load();

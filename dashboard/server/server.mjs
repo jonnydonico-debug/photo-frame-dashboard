@@ -434,9 +434,12 @@ async function api(req, res, url) {
   const needAdmin = () => { if (!admin) { send(res, 401, { error: 'Admin login required' }); return true; } return false; };
   if (m !== 'GET' && m !== 'HEAD' && !admin && req.headers['x-hq'] !== '1') return send(res, 403, { error: 'Missing X-HQ header' });
 
-  if (p === '/api/state' && m === 'GET') return send(res, 200, { rev, state });
+  // Reading the household's data needs the home network, Cloudflare Access, or a sign-in.
+  const canRead = admin || home;
+  if (p === '/api/state' && m === 'GET') return canRead ? send(res, 200, { rev, state }) : send(res, 401, { error: 'Sign in to see this' });
   if (p === '/api/me') return send(res, 200, { admin, home, demoBuild: FROM_SOURCE, publicIps: admin ? publicIps : undefined });
   if (p === '/api/events') {
+    if (!canRead) return send(res, 401, { error: 'Sign in to see this' });
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
     res.write('retry: 3000\ndata: ' + JSON.stringify({ type: 'hello', rev }) + '\n\n');
     streams.add(res);
