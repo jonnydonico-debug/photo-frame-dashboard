@@ -262,3 +262,9 @@ code, pre { background: var(--paper-2); }
 .cs-scroll { overflow-x: auto; }
 .cs-t--recent td { white-space: nowrap; }
 .cs-prices input { width: 110px; }
+/* ---------- Connected calendars */
+#cal-feeds .status select { width: auto; display: inline-block; margin: 0 8px; font-size: 13px; padding: 4px 8px; min-height: 0; }
+.cal-add { margin-top: 12px; }
+.cal-help { margin-top: 10px; font-size: 14px; color: var(--ink-2); }
+.cal-help summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+.cal-help p { margin: 8px 0; line-height: 1.45; }

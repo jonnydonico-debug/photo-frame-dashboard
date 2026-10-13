@@ -15,6 +15,7 @@ import { createGovee } from './govee.mjs';
 import { createAppleTV } from './appletv.mjs';
 import { MODELS, testKey, claudeUsage, setUsageSink } from './assistant.mjs';
 import { createCosts } from './costs.mjs';
+import { createCalendars } from './calendars.mjs';
 import { createAgents } from './agents.mjs';
 import { createPlexTools } from './plextools.mjs';
 import { createIMessage } from './imessage.mjs';
@@ -268,6 +269,8 @@ const IM = createIMessage({ secrets, saveSecrets: () => saveSecrets(), log, agen
 // Claude API costs (Admin → Costs and the frame's Costs tab)
 const COSTS = createCosts({ dataDir: DATA, log, commit: (p, c) => commit(p, c), notify: (p, t) => IM.notify(p, t), agentName: id => { const a = AG.get(id); return a ? a.name : id; } });
 setUsageSink((m, u, t) => COSTS.record(m, u, t));
+// Connected calendars (iCloud / Google iCal links), merged into state.events
+const CAL = createCalendars({ secrets, saveSecrets: () => saveSecrets(), getState: () => state, commit: (p, c) => commit(p, c), log });
 
 // ------------------------------------------------------------------ HomeKit via Shortcuts
 // Each device / scene can name a Shortcut. We run it with a text input:
@@ -583,6 +586,9 @@ async function api(req, res, url) {
             level: ['dim', 'medium', 'bright'].includes(n.level) ? n.level : 'medium' },
           lockAfter: [0, 60, 120, 300, 600].includes(+(v && v.lockAfter)) ? +v.lockAfter : 120
         };
+      } else if (k === 'events') {
+        // Events from connected calendars are read-only: keep the Mac's copy of them
+        clean.events = CAL.mergeIncoming(v);
       } else clean[k] = v;
     }
     if (!Object.keys(clean).length) return send(res, 200, { rev });
@@ -633,6 +639,7 @@ async function api(req, res, url) {
         settings: state.settings, plex: { url: secrets.plex.url, hasToken: !!secrets.plex.token, status: plexStatus },
         icloud: { set: !!secrets.icloudAlbum, status: X.albumStatus() },
         tomtom: X.tomtomStatus(),
+        calendars: CAL.list(),
         govee: GV.status(),
         assistant: (() => { const a = secrets.assistant || {}; return { enabled: !!a.enabled, hasKey: !!a.apiKey, models: MODELS, allow: a.allow || [], status: IM.status(), usage: claudeUsage(), frontDesk: AG.frontDesk() && AG.frontDesk().name }; })(),
         tv: TV.status(),
@@ -686,6 +693,22 @@ async function api(req, res, url) {
         if (a === 'schedule-delete') { AG.deleteSchedule(String(b.id)); return send(res, 200, { ok: true }); }
         if (a === 'schedule-run') return send(res, 200, await AG.runSchedule(String(b.id)));
         if (a === 'settings') return send(res, 200, AG.setSettings({ plex: b.plex ? { moviesPath: String(b.plex.moviesPath || '').trim(), inboxPath: String(b.plex.inboxPath || '').trim() } : undefined }));
+      } catch (e) { return send(res, e.status && e.status < 500 ? e.status : 409, { error: e.message }); }
+      return send(res, 404, { error: 'Not found' });
+    }
+    if (sub.startsWith('calendars')) {
+      const b = m === 'POST' ? await readBody(req) : {};
+      try {
+        if (sub === 'calendars' && m === 'GET') return send(res, 200, CAL.list());
+        if (sub === 'calendars/add' && m === 'POST') {
+          const r = await CAL.add({ name: b.name, url: b.url, person: b.person });
+          // First calendar: show the frame's Calendar tab
+          if (CAL.count() === 1 && (state.settings.hiddenViews || []).includes('calendar')) commit({ settings: Object.assign({}, state.settings, { hiddenViews: state.settings.hiddenViews.filter(v => v !== 'calendar') }) }, 'admin');
+          return send(res, 200, Object.assign(r, { list: CAL.list() }));
+        }
+        if (sub === 'calendars/update' && m === 'POST') { CAL.update(String(b.id), { name: b.name, person: b.person }); return send(res, 200, CAL.list()); }
+        if (sub === 'calendars/remove' && m === 'POST') { CAL.remove(String(b.id)); return send(res, 200, CAL.list()); }
+        if (sub === 'calendars/sync' && m === 'POST') { await CAL.sync(); return send(res, 200, CAL.list()); }
       } catch (e) { return send(res, e.status && e.status < 500 ? e.status : 409, { error: e.message }); }
       return send(res, 404, { error: 'Not found' });
     }
@@ -941,5 +964,5 @@ server.listen(PORT, HOST, () => {
   log('  Dashboard:  http://' + os.hostname().replace(/\.local$/, '') + '.local:' + PORT + '/');
   addrs.forEach(a => log('              http://' + a + ':' + PORT + '/'));
   log('  Admin:      /admin');
-  refreshWeather(); refreshPlex(); X.start(); GV.start(); TV.start(); IM.start(); AG.startSchedules(); COSTS.publish(); setInterval(() => COSTS.publish(), 30 * 60000);
+  refreshWeather(); refreshPlex(); X.start(); GV.start(); TV.start(); IM.start(); AG.startSchedules(); CAL.start(); COSTS.publish(); setInterval(() => COSTS.publish(), 30 * 60000);
 });

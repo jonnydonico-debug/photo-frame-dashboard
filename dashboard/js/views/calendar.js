@@ -263,6 +263,7 @@
         return '<span class="chip" style="' + App.pstyle(x) + '">' + App.avatar(x, 32) + x.name + '</span>';
       }).join('') + '</div></div>' +
       (e.notes ? '<div class="evs-notes serif">“' + App.esc(e.notes) + '”</div>' : '') +
+      (e.srcName ? '<div class="evs-row">' + App.icon('calendar', 28) + '<div><b>' + App.esc(e.srcName) + '</b><span>From a connected calendar · change it on your phone</span></div></div>' : '') +
       '</div></div>', { cls: 'sheet--event' });
   };
 

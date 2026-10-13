@@ -235,9 +235,30 @@ function family() {
   return listHTML('people', { intro: 'Colours and names here drive the whole dashboard. Turning “At home” off shows the status (or ETA) on the Today screen.' }) +
     (kids.length ? `<section class="block"><div class="block-h"><h2 class="serif">Stars</h2></div>${kids.map(p => `<label class="f f--inline"><span class="f-l">${esc(p.name)}</span><input type="number" data-stars="${esc(p.id)}" value="${S.stars[p.id]}"></label>`).join('')}</section>` : '');
 }
+let calUI = { busy: false, person: 'jd' };
+function calFeeds() {
+  const L = cfg.calendars || [], P = S.people || [];
+  const whose = id => id === 'both' ? 'Both' : ((P.find(p => p.id === id) || {}).name || id);
+  const ago2 = iso => { if (!iso) return ''; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.round(m / 60) + ' hr ago'; };
+  return `<section class="block" id="cal-feeds"><div class="block-h"><h2 class="serif">Connected calendars</h2>${L.length ? '<button class="btn btn--s" data-calsync>Sync now</button>' : ''}</div>
+    <p class="intro">Your real calendars, shown on the frame’s Calendar and Today tabs and available to the iMessage assistant. They update every 10 minutes and are read-only here: add or change events on your phone as usual.</p>
+    ${L.length ? `<ul class="status">${L.map(f => `<li><b>${esc(f.name)}</b><span>${esc(whose(f.person))} · ${esc(f.host)} · ${f.status.ok ? f.status.count + ' events · synced ' + ago2(f.status.checked) : f.status.error ? '<span class="warn-t">' + esc(f.status.error) + '</span>' : esc(f.status.note || '')}
+      <select data-calwho="${esc(f.id)}">${P.map(p => [p.id, p.name]).concat([['both', 'Both']]).map(([v, l]) => `<option value="${esc(v)}" ${f.person === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
+      <button class="linkbtn small" data-caldel="${esc(f.id)}">remove</button></span></li>`).join('')}</ul>` : ''}
+    <div class="cal-add">
+      <div class="grid2"><label class="f"><span class="f-l">Name</span><input id="cal-name" placeholder="JD work" maxlength="40"></label>
+      <label class="f"><span class="f-l">Whose</span><select id="cal-person">${P.map(p => [p.id, p.name]).concat([['both', 'Both (shared calendar)']]).map(([v, l]) => `<option value="${esc(v)}" ${calUI.person === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label></div>
+      <label class="f f--wide"><span class="f-l">Calendar link</span><div class="row"><input id="cal-url" autocomplete="off" data-1p-ignore data-lpignore="true" placeholder="webcal://… or https://…/basic.ics"><button class="btn btn--solid" data-caladd ${calUI.busy ? 'disabled' : ''}>${calUI.busy ? 'Checking…' : 'Connect'}</button></div></label>
+    </div>
+    <details class="cal-help"><summary>Where to find the link</summary>
+      <p><b>iCloud (iPhone):</b> Calendar app → <i>Calendars</i> at the bottom → tap the ⓘ next to the calendar → turn on <b>Public Calendar</b> → <b>Share Link…</b> → Copy. Do this for each calendar you want (Georgia does hers on her phone and sends you the link). Note: anyone who has a public link can see that calendar, so only share it here. You can turn it off later to cut it off.</p>
+      <p><b>Google (work):</b> on a computer, open calendar.google.com → ⚙︎ Settings → under <i>Settings for my calendars</i> click your calendar → <b>Integrate calendar</b> → copy <b>Secret address in iCal format</b>. If that option is missing, your company has turned it off; ask IT, or share the work calendar’s free/busy with your personal Google or iCloud account instead.</p>
+      <p>Add one link per calendar. Shared family calendars: pick “Both”.</p>
+    </details></section>`;
+}
 function calendar() {
   const from = new Date(); from.setHours(0, 0, 0, 0);
-  return listHTML('events', { title: 'Upcoming', filter: e => showPast || new Date(e.end) >= from, sort: (a, b) => new Date(a.start) - new Date(b.start), limit: moreKeys.events ? 0 : 40,
+  return calFeeds() + listHTML('events', { title: 'Added by hand', filter: e => !e.src && (showPast || new Date(e.end) >= from), sort: (a, b) => new Date(a.start) - new Date(b.start), limit: moreKeys.events ? 0 : 40,
     intro: `Times are in this device’s time zone. <button class="linkbtn" data-past>${showPast ? 'Hide past events' : 'Show past events'}</button> · <button class="linkbtn" data-clearpast>Delete past events</button>` });
 }
 function chores() {
@@ -593,6 +614,7 @@ document.addEventListener('input', e => {
 document.addEventListener('change', async e => {
   const t = e.target, ctx = itemAt(t);
   if (t.dataset && (t.dataset.agcan || t.dataset.schday)) { t.parentNode.classList.toggle('is-on', t.checked); return; }
+  if (t.dataset && t.dataset.calwho) { try { cfg.calendars = await call('/api/admin/calendars/update', { method: 'POST', body: { id: t.dataset.calwho, person: t.value } }); flash('Saved'); } catch (e2) { flash(e2.message, true); } return; }
   if (t.id === 'ai-model') { await call('/api/admin/assistant', { method: 'POST', body: { model: t.value } }); flash('Model saved'); return; }
   if (t.hasAttribute && t.hasAttribute('data-aion')) {
     try { const r = await call('/api/admin/assistant', { method: 'POST', body: { enabled: t.checked } }); flash(t.checked ? (r.status && r.status.state === 'listening' ? 'Listening for texts' : 'On · see the steps above') : 'Off'); } catch (e2) { flash(e2.message, true); }
@@ -769,6 +791,16 @@ document.addEventListener('click', async e => {
       try { await call('/api/admin/costs', { method: 'POST', body: { prices } }); flash('Prices saved'); CST = null; return loadCosts(); } catch (e2) { return flash(e2.message, true); }
     }
     if (d.cstreset != null) { await call('/api/admin/costs', { method: 'POST', body: { resetPrices: true } }); flash('Back to default prices'); CST = null; return loadCosts(); }
+    if (d.caladd != null) {
+      const url = $('#cal-url').value.trim(), name = $('#cal-name').value.trim(), person = $('#cal-person').value;
+      if (!url) return flash('Paste the calendar link first', true);
+      calUI.busy = true; calUI.person = person; render();
+      try { const r = await call('/api/admin/calendars/add', { method: 'POST', body: { url, name: name || 'Calendar', person } }); cfg.calendars = r.list; flash('Connected · ' + r.count + ' events'); }
+      catch (e2) { flash(e2.message, true); }
+      calUI.busy = false; return render();
+    }
+    if (d.calsync != null) { flash('Syncing…'); try { cfg.calendars = await call('/api/admin/calendars/sync', { method: 'POST', body: {} }); flash('Synced'); } catch (e2) { flash(e2.message, true); } return render(); }
+    if (d.caldel) { if (!confirm('Disconnect this calendar? Its events disappear from the frame.')) return; cfg.calendars = await call('/api/admin/calendars/remove', { method: 'POST', body: { id: d.caldel } }); return render(); }
     if (d.schnew != null) { agUI.sched = { kind: 'reminder', repeat: 'once', time: '', to: 'jd', agent: 'home', days: [] }; render(); const el = document.getElementById('sch-form'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
     if (d.schcancel != null) { agUI.sched = null; return render(); }
     if (d.schedit) {

@@ -20,7 +20,7 @@ export const DEFAULT_AGENTS = [
     id: 'home', name: 'Home', icon: '🏠', parent: null, model: 'claude-sonnet-5-5', enabled: true, builtin: true, channels: ['imessage'],
     role: 'Front desk. Answers texts from JD and Georgia and runs the house.',
     instructions: 'Handle everyday requests yourself with your tools. Hand work to a teammate when it fits them better, for example Plex for anything about the movie library. Save lasting preferences and facts with remember.',
-    tools: HOUSE_TOOLS.concat(['todo_list', 'todo_add', 'todo_done', 'todo_remove', 'api_costs', 'web_search', 'schedule_add', 'schedule_list', 'schedule_cancel']), can: ['plex']
+    tools: HOUSE_TOOLS.concat(['calendar', 'todo_list', 'todo_add', 'todo_done', 'todo_remove', 'api_costs', 'web_search', 'schedule_add', 'schedule_list', 'schedule_cancel']), can: ['plex']
   },
   {
     id: 'plex', name: 'Plex', icon: '🎬', parent: 'home', model: 'claude-haiku-5-5', enabled: false /* off until JD switches it on */, builtin: true, channels: [],
@@ -48,22 +48,17 @@ export function createAgents(ctx) {
   let schedules = load('schedules.json', null);
   if (!schedules) schedules = [{ id: 'morning-brief', title: 'Morning brief', agent: 'home', kind: 'task', enabled: false, deliver: 'jd', when: { type: 'weekly', time: '07:30', days: [1, 2, 3, 4, 5] },
     prompt: 'Send a short good-morning brief: today\'s weather, today\'s calendar, the next BART trains, and anything on the shopping list. Keep it to a few lines.', lastRun: 0 }];
-  // v2: the Home agent gets web search and schedules (existing installs keep their other choices)
-  if (!(settings.v >= 4)) {
+  // Tools added in later versions are switched on for the Home agent of existing installs too
+  // (v2 web search + schedules, v3 API costs, v4 to-dos, v5 calendar). Oldest first.
+  const V0 = settings.v || 0, LATEST = 5;
+  if (V0 < LATEST) {
     const h = agents.find(a => a.id === 'home');
-    if (h) for (const t of ['todo_list', 'todo_add', 'todo_done', 'todo_remove', 'api_costs']) if (!(h.tools || []).includes(t)) h.tools = (h.tools || []).concat([t]);
-    if (settings.v >= 2) { settings.v = 4; setTimeout(() => { saveAgents(); saveSettings(); }, 0); }
-  }
-  if (!(settings.v >= 3)) {
-    const h = agents.find(a => a.id === 'home');
-    if (h && !(h.tools || []).includes('api_costs')) h.tools = (h.tools || []).concat(['api_costs']);
-    if (settings.v >= 2 && settings.v < 4) { settings.v = 4; setTimeout(() => { saveAgents(); saveSettings(); }, 0); }
-  }
-  if (!(settings.v >= 2)) {
-    const h = agents.find(a => a.id === 'home');
-    if (h) for (const t of ['web_search', 'schedule_add', 'schedule_list', 'schedule_cancel']) if (!(h.tools || []).includes(t)) h.tools = (h.tools || []).concat([t]);
-    const p = agents.find(a => a.id === 'plex'); if (p) { p.builtin = true; p.channels = p.channels || []; }
-    settings.v = 4;
+    const add = list => { if (h) for (const t of list) if (!(h.tools || []).includes(t)) h.tools = (h.tools || []).concat([t]); };
+    if (V0 < 2) { add(['web_search', 'schedule_add', 'schedule_list', 'schedule_cancel']); const p = agents.find(a => a.id === 'plex'); if (p) { p.builtin = true; p.channels = p.channels || []; } }
+    if (V0 < 3) add(['api_costs']);
+    if (V0 < 4) add(['todo_list', 'todo_add', 'todo_done', 'todo_remove']);
+    if (V0 < 5) add(['calendar']);
+    settings.v = LATEST;
     setTimeout(() => { saveAgents(); saveSettings(); saveSchedules(); }, 0);
   }
   const timers = {};
@@ -106,9 +101,11 @@ export function createAgents(ctx) {
     { name: 'todo_done', description: 'Tick off a to-do (matches the text).', input_schema: { type: 'object', properties: { item: { type: 'string' }, list: { type: 'string', enum: LISTS } }, required: ['item'] } },
     { name: 'todo_remove', description: 'Delete a to-do without ticking it off.', input_schema: { type: 'object', properties: { item: { type: 'string' }, list: { type: 'string', enum: LISTS } }, required: ['item'] } }
   ];
+  const calTools = [{ name: 'calendar', description: 'Events on the family calendars (JD’s and Georgia’s connected iCloud/work calendars plus ones added on the dashboard). Read-only.',
+    input_schema: { type: 'object', properties: { date: { type: 'string', description: 'First day, YYYY-MM-DD (default today)' }, days: { type: 'number', description: 'How many days, 1-31 (default 1)' }, person: { type: 'string', description: 'jd or georgia (default both)' } } } }];
   const costTools = [{ name: 'api_costs', description: 'What Home HQ has spent on the Claude API: today, last 7 days, this month (with forecast and budget), last month, and this month by agent, by source and by model. Same numbers as the Costs tab.', input_schema: { type: 'object', properties: {} } }];
   function catalog() {
-    const groups = [{ group: 'House', tools: house.defs }, { group: 'To-dos', tools: todoTools }, { group: 'Costs', tools: costTools }, { group: 'Web', tools: webTools }, { group: 'Schedules', tools: scheduleTools }, { group: 'Memory (always on)', tools: memoryTools }];
+    const groups = [{ group: 'House', tools: house.defs }, { group: 'Calendar', tools: calTools }, { group: 'To-dos', tools: todoTools }, { group: 'Costs', tools: costTools }, { group: 'Web', tools: webTools }, { group: 'Schedules', tools: scheduleTools }, { group: 'Memory (always on)', tools: memoryTools }];
     for (const g of extraTools()) if (g) groups.push(g);
     return groups;
   }
@@ -153,6 +150,20 @@ export function createAgents(ctx) {
     }
     if (name === 'schedule_list') return schedules.map(describe);
     if (name.startsWith('todo_')) return runTodo(name, input, c);
+    if (name === 'calendar') {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(input.date || ''));
+      const from = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(); from.setHours(0, 0, 0, 0);
+      const days = Math.min(31, Math.max(1, Math.round(+input.days || 1))), to = +from + days * 864e5;
+      const who = input.person && input.person !== 'both' ? String(input.person) : null;
+      const people = getState().people || [];
+      const evs = (getState().events || []).filter(e => Date.parse(e.end) > +from && Date.parse(e.start) < to && (!who || (e.people || []).includes(who)))
+        .sort((a, b) => Date.parse(a.start) - Date.parse(b.start)).slice(0, 80);
+      const fmtD = { weekday: 'short', month: 'short', day: 'numeric' }, fmtT = { hour: 'numeric', minute: '2-digit' };
+      return { from: from.toLocaleDateString('en-US', fmtD), days, events: evs.map(e => ({ title: e.title,
+        when: new Date(e.start).toLocaleDateString('en-US', fmtD) + (e.allDay ? ' (all day)' : ' ' + new Date(e.start).toLocaleTimeString('en-US', fmtT) + '–' + new Date(e.end).toLocaleTimeString('en-US', fmtT)),
+        who: (e.people || []).length >= people.length ? 'both' : (e.people || []).map(id => (people.find(p => p.id === id) || {}).name || id).join(', '),
+        where: e.loc || undefined, calendar: e.srcName || 'dashboard' })) };
+    }
     if (name === 'api_costs') {
       const S = ctx.costs && ctx.costs();
       if (!S) return { error: 'Cost tracking isn’t available' };
