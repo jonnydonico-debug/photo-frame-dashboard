@@ -13,7 +13,9 @@ import { fileURLToPath } from 'node:url';
 import { createIntegrations } from './integrations.mjs';
 import { createGovee } from './govee.mjs';
 import { createAppleTV } from './appletv.mjs';
-import { createAssistant, MODELS } from './assistant.mjs';
+import { MODELS, testKey, claudeUsage } from './assistant.mjs';
+import { createAgents } from './agents.mjs';
+import { createPlexTools } from './plextools.mjs';
 import { createIMessage } from './imessage.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -234,14 +236,21 @@ function commit(patch, client) {
 const GV = createGovee({ getState: () => state, commit: (p, c) => commit(p, c), secrets, saveSecrets: () => saveSecrets(), log });
 const TV = createAppleTV({ dataDir: DATA, here: HERE, commit: (p, c) => commit(p, c), secrets, saveSecrets: () => saveSecrets(), log });
 const X = createIntegrations({ getState: () => state, commit, secrets, saveSecrets: () => saveSecrets(), log, dataDir: DATA, photosDir: PHOTOS });
-const AI = createAssistant({
-  getState: () => state, commit: (p, c) => commit(p, c), secrets, log,
-  devices: { apply: (a, b) => fireDeviceShortcuts(a, b) },
-  spotify: { search: q => X.spotifySearch(q), command: b => X.spotifyCommand(b) },
-  tv: { cmd: (c, a, t) => TV.cmd(c, a, t) }, govee: GV,
-  announce: text => broadcast({ type: 'announce', text, icon: 'bell' })
+// Agents (iMessage front desk, Plex, and any you create in Admin → Agents)
+let PLX = null;
+const AG = createAgents({
+  dataDir: DATA, secrets, log, broadcast, getState: () => state,
+  house: {
+    getState: () => state, commit: (p, c) => commit(p, c),
+    devices: { apply: (a, b) => fireDeviceShortcuts(a, b) },
+    spotify: { search: q => X.spotifySearch(q), command: b => X.spotifyCommand(b) },
+    tv: { cmd: (c, a, t) => TV.cmd(c, a, t) }, govee: GV,
+    announce: text => broadcast({ type: 'announce', text, icon: 'bell' })
+  },
+  extraTools: () => [PLX]
 });
-const IM = createIMessage({ secrets, saveSecrets: () => saveSecrets(), log, assistant: AI });
+PLX = createPlexTools({ plex: (p, o) => plex(p, o), plexOk: () => !!(secrets.plex.url && secrets.plex.token), settings: () => AG.settings(), log });
+const IM = createIMessage({ secrets, saveSecrets: () => saveSecrets(), log, agents: AG });
 
 // ------------------------------------------------------------------ HomeKit via Shortcuts
 // Each device / scene can name a Shortcut. We run it with a text input:
@@ -602,7 +611,7 @@ async function api(req, res, url) {
         icloud: { set: !!secrets.icloudAlbum, status: X.albumStatus() },
         tomtom: X.tomtomStatus(),
         govee: GV.status(),
-        assistant: (() => { const a = secrets.assistant || {}; return { enabled: !!a.enabled, hasKey: !!a.apiKey, model: a.model || MODELS[0][0], models: MODELS, allow: a.allow || [], status: IM.status(), usage: AI.usage() }; })(),
+        assistant: (() => { const a = secrets.assistant || {}; return { enabled: !!a.enabled, hasKey: !!a.apiKey, models: MODELS, allow: a.allow || [], status: IM.status(), usage: claudeUsage(), frontDesk: AG.frontDesk() && AG.frontDesk().name }; })(),
         tv: TV.status(),
         spotify: { clientId: (secrets.spotify || {}).clientId || '', hasSecret: !!(secrets.spotify || {}).clientSecret, connected: !!(secrets.spotify || {}).refreshToken, status: X.spotifyStatus(), redirect: spotifyRedirect(req) },
         apiToken: secrets.apiToken, isMac: IS_MAC, hostname: os.hostname(), port: PORT,
@@ -624,9 +633,8 @@ async function api(req, res, url) {
       const b = await readBody(req), a = secrets.assistant = secrets.assistant || {};
       if (b.apiKey !== undefined) {
         const prev = a.apiKey; a.apiKey = String(b.apiKey || '').trim();
-        if (a.apiKey) { try { await AI.test(); } catch (e) { a.apiKey = prev; saveSecrets(); return send(res, 400, { error: 'Claude said: ' + e.message }); } }
+        if (a.apiKey) { try { await testKey(secrets); } catch (e) { a.apiKey = prev; saveSecrets(); return send(res, 400, { error: 'Claude said: ' + e.message }); } }
       }
-      if (b.model && MODELS.some(x => x[0] === b.model)) a.model = b.model;
       if (Array.isArray(b.allow)) a.allow = b.allow.slice(0, 6).map(x => ({ handle: String(x.handle || '').trim().slice(0, 80), person: String(x.person || '') })).filter(x => x.handle);
       if (b.enabled !== undefined) a.enabled = !!b.enabled;
       saveSecrets();
@@ -634,13 +642,26 @@ async function api(req, res, url) {
     }
     if (sub === 'assistant/ask' && m === 'POST') {
       const b = await readBody(req);
-      try { return send(res, 200, { reply: await AI.reply({ text: String(b.text || ''), images: [], who: String(b.who || 'jd'), handle: 'admin-test' }) }); }
+      try { return send(res, 200, { reply: (await AG.run(AG.frontDesk().id, { text: String(b.text || ''), who: String(b.who || 'jd'), channel: 'admin', convo: 'admin:test' })).output }); }
       catch (e) { return send(res, e.status === 401 ? 400 : 409, { error: e.message }); }
     }
     if (sub === 'assistant/test-send' && m === 'POST') {
       const b = await readBody(req);
       try { await IM.testSend(String(b.handle || '')); return send(res, 200, { ok: true }); }
       catch (e) { return send(res, 409, { error: /not authorized|1743|-1743/i.test(e.message) ? 'The Mac blocked Home HQ from using Messages. Allow it in System Settings → Privacy & Security → Automation.' : e.message }); }
+    }
+    if (sub.startsWith('agents')) {
+      const b = m === 'POST' ? await readBody(req) : {}, a = sub.slice(6).replace(/^\//, '');
+      try {
+        if (a === '' && m === 'GET') return send(res, 200, Object.assign(AG.snapshot(), { plexConnected: !!(secrets.plex.url && secrets.plex.token), hasKey: !!(secrets.assistant && secrets.assistant.apiKey) }));
+        if (a === 'save') return send(res, 200, AG.saveAgent(b.agent || {}));
+        if (a === 'delete') { AG.deleteAgent(String(b.id)); return send(res, 200, { ok: true }); }
+        if (a === 'chat') return send(res, 200, await AG.run(String(b.id), { text: String(b.text || ''), who: String(b.who || 'jd'), channel: 'admin', convo: 'admin:' + b.id }));
+        if (a === 'clear-chat') { AG.clearHistory('admin:' + b.id); return send(res, 200, { ok: true }); }
+        if (a === 'memory') { if (b.delete) AG.deleteMemory(String(b.delete)); else if (b.text) AG.addMemory(String(b.text), 'you'); return send(res, 200, { ok: true }); }
+        if (a === 'settings') return send(res, 200, AG.setSettings({ plex: b.plex ? { moviesPath: String(b.plex.moviesPath || '').trim(), inboxPath: String(b.plex.inboxPath || '').trim() } : undefined }));
+      } catch (e) { return send(res, e.status && e.status < 500 ? e.status : 409, { error: e.message }); }
+      return send(res, 404, { error: 'Not found' });
     }
     if (sub === 'restart' && m === 'POST') { send(res, 200, { ok: true }); setTimeout(() => { if (saveTimer) save(); process.exit(0); }, 300); return; }
     if (sub.startsWith('tv/')) {

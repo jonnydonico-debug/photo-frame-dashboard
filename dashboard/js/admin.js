@@ -187,7 +187,7 @@ function deviceControl(d) {
 
 // ------------------------------------------------------------------ sections
 const SECTIONS = [['overview', 'Overview'], ['family', 'Family'], ['calendar', 'Calendar'], ['chores', 'Chores'], ['shopping', 'Shopping'],
-  ['photos', 'Photos'], ['music', 'Music'], ['home', 'Lights & Home'], ['assistant', 'iMessage'], ['settings', 'Settings']];
+  ['photos', 'Photos'], ['music', 'Music'], ['home', 'Lights & Home'], ['assistant', 'iMessage'], ['agents', 'Agents'], ['settings', 'Settings']];
 
 function overview() {
   const lights = (S.devices || []).filter(d => d.type === 'light' && d.on).length;
@@ -267,6 +267,80 @@ function photos() {
       <figcaption><input data-pmeta="${i}" data-pk="place" value="${esc(p.place || '')}" placeholder="Place"><input type="date" data-pmeta="${i}" data-pk="date" value="${esc(p.date || '')}">
       <span class="row"><button class="btn btn--s" data-pfav="${i}">${p.fav ? '★ Favourite' : '☆ Favourite'}</button><button class="btn btn--s btn--danger" data-pdel="${esc(p.id || p.seed)}">Delete</button></span></figcaption></figure>`).join('')}</div>
   </section>`;
+}
+// ------------------------------------------------------------------ Agents studio
+let AGS = null, agUI = { edit: null, chat: null, logs: {}, busy: false, open: {}, loading: false };
+async function loadAgents() { if (agUI.loading) return; agUI.loading = true; try { AGS = await call('/api/admin/agents'); } catch (e) { AGS = { error: e.message }; } agUI.loading = false; if (section === 'agents') rerenderSoon(); }
+const agName = id => { const a = AGS && AGS.agents.find(x => x.id === id); return a ? a.icon + ' ' + a.name : id; };
+const modelShort = m => /haiku/.test(m) ? 'Haiku' : /opus/.test(m) ? 'Opus' : 'Sonnet';
+const ago = t => { const s = Math.round((Date.now() - t) / 1000); return s < 60 ? s + 's ago' : s < 3600 ? Math.round(s / 60) + ' min ago' : s < 86400 ? Math.round(s / 3600) + ' hr ago' : new Date(t).toLocaleDateString(); };
+function agents() {
+  if (!AGS) { loadAgents(); return '<section class="block"><p class="muted">Loading agents…</p></section>'; }
+  if (AGS.error) return `<section class="block"><p class="warn">${esc(AGS.error)}</p></section>`;
+  const A = AGS.agents, running = new Set(AGS.runs.filter(r => r.status === 'running').map(r => r.agent));
+  const card = (a, depth) => `<div class="ag-card ${a.enabled ? '' : 'is-off'}" style="margin-left:${depth * 22}px">
+      <div class="ag-top"><span class="ag-ico">${esc(a.icon)}</span><div class="ag-main"><b>${esc(a.name)}</b>${running.has(a.id) ? ' <span class="ag-live">working…</span>' : ''}<small>${esc(a.role)}</small>
+      <span class="ag-meta">${modelShort(a.model)} · ${(a.tools || []).length} tools${(a.channels || []).includes('imessage') ? ' · answers iMessage' : ''}${(a.can || []).length ? ' · hands off to ' + a.can.map(agName).join(', ') : ''}${a.enabled ? '' : ' · off'}</span></div></div>
+      <div class="row wrap"><button class="btn btn--s btn--solid" data-agchat="${esc(a.id)}">Chat</button><button class="btn btn--s" data-agedit="${esc(a.id)}">Edit</button><button class="btn btn--s" data-agsub="${esc(a.id)}">+ Sub-agent</button></div></div>`;
+  const tree = (parent, depth) => A.filter(a => (a.parent || null) === parent || (parent === null && a.parent && !A.some(x => x.id === a.parent))).map(a => card(a, depth) + tree(a.id, depth + 1)).join('');
+  return (AGS.hasKey ? '' : '<section class="block"><p class="warn">Add a Claude API key in Admin → iMessage first. Every agent uses it.</p></section>') +
+    `<section class="block"><div class="block-h"><h2 class="serif">Your agents</h2><button class="btn btn--s btn--solid" data-agnew>+ New agent</button></div>
+      <p class="intro">Agents share one memory and one activity log, and can hand work to the agents on their team (sub-agents report to the agent above them). The one marked “answers iMessage” gets your texts.</p>
+      <div class="ag-tree">${tree(null, 0)}</div></section>` +
+    (agUI.edit ? agEditor(agUI.edit) : '') + (agUI.chat ? agChat(agUI.chat) : '') + agMemory() + agActivity();
+}
+function agEditor(a) {
+  const tools = new Set(a.tools || []), can = new Set(a.can || []), P = (AGS.settings && AGS.settings.plex) || {};
+  return `<section class="block" id="ag-editor"><div class="block-h"><h2 class="serif">${a.id ? 'Edit ' + esc(a.name) : 'New agent'}</h2></div>
+    <div class="grid2"><label class="f"><span class="f-l">Name</span><input id="ag-name" value="${esc(a.name || '')}" placeholder="Garden"></label>
+    <label class="f"><span class="f-l">Icon (emoji)</span><input id="ag-icon" value="${esc(a.icon || '🤖')}" maxlength="4"></label></div>
+    <label class="f f--wide"><span class="f-l">Job (one line, other agents see this)</span><input id="ag-role" value="${esc(a.role || '')}" placeholder="Keeps track of watering and plant care"></label>
+    <label class="f f--wide"><span class="f-l">Instructions</span><textarea id="ag-instr" rows="6" placeholder="How it should work, what to check, what to avoid…">${esc(a.instructions || '')}</textarea></label>
+    <div class="grid2"><label class="f"><span class="f-l">Model</span><select id="ag-model">${(AGS.models || []).map(([v, l]) => `<option value="${v}" ${a.model === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+    <label class="f"><span class="f-l">Reports to</span><select id="ag-parent"><option value="">Nobody (top level)</option>${AGS.agents.filter(x => x.id !== a.id).map(x => `<option value="${esc(x.id)}" ${a.parent === x.id ? 'selected' : ''}>${esc(x.icon + ' ' + x.name)}</option>`).join('')}</select></label></div>
+    <label class="f f--check"><input type="checkbox" id="ag-imsg" ${(a.channels || []).includes('imessage') ? 'checked' : ''}><span class="f-l">Answers iMessage (only one agent can)</span></label>
+    <label class="f f--check"><input type="checkbox" id="ag-on" ${a.enabled !== false ? 'checked' : ''}><span class="f-l">Switched on</span></label>
+    <div class="f-l" style="margin-top:10px">Tools</div>
+    ${AGS.catalog.map(g => `<details ${g.tools.some(t => tools.has(t.name)) ? 'open' : ''}><summary>${esc(g.group)} (${/Memory/.test(g.group) ? g.tools.length : g.tools.filter(t => tools.has(t.name)).length}/${g.tools.length})</summary><div class="ag-tools">${g.tools.map(t => `<label class="ag-tool"><input type="checkbox" data-agtool="${esc(t.name)}" ${tools.has(t.name) || /Memory/.test(g.group) ? 'checked' : ''} ${/Memory/.test(g.group) ? 'disabled' : ''}><span><b>${esc(t.name)}</b><small>${esc(t.description)}</small></span></label>`).join('')}</div></details>`).join('')}
+    <div class="f-l" style="margin-top:10px">Can hand work to</div>
+    <div class="chips">${AGS.agents.filter(x => x.id !== a.id).map(x => `<label class="chip ${can.has(x.id) ? 'is-on' : ''}"><input type="checkbox" data-agcan="${esc(x.id)}" ${can.has(x.id) ? 'checked' : ''} style="display:none">${esc(x.icon + ' ' + x.name)}</label>`).join('')}</div>
+    ${a.id === 'plex' ? `<div class="f-l" style="margin-top:12px">Plex folders on the Mac (e.g. a NAS share under /Volumes)</div>
+      <label class="f f--wide"><span class="f-l">Movies folder Plex watches</span><input id="pl-movies" value="${esc(P.moviesPath || '')}" placeholder="/Volumes/Media/Movies"></label>
+      <label class="f f--wide"><span class="f-l">Inbox (drop movies you own here to be filed)</span><input id="pl-inbox" value="${esc(P.inboxPath || '')}" placeholder="/Volumes/Media/Inbox"></label>
+      ${AGS.plexConnected ? '' : '<p class="intro small">Plex itself isn’t connected yet: add it in Admin → Settings → Plex.</p>'}` : ''}
+    <div class="row wrap" style="margin-top:12px"><button class="btn btn--solid" data-agsave>Save</button><button class="btn" data-agcancel>Cancel</button>${a.id && !a.builtin ? '<button class="btn btn--danger" data-agdel>Delete</button>' : ''}</div>
+  </section>`;
+}
+function agChat(id) {
+  const a = AGS.agents.find(x => x.id === id); if (!a) return '';
+  const log = agUI.logs[id] || [];
+  return `<section class="block" id="ag-chat"><div class="block-h"><h2 class="serif">Chat with ${esc(a.icon + ' ' + a.name)}</h2><button class="btn btn--s" data-agclear>New chat</button></div>
+    <div class="ag-log">${log.map(m => `<div class="ag-msg ag-msg--${m.role}">${esc(m.text)}${m.steps && m.steps.length ? `<small>used ${m.steps.map(s => esc(s.tool)).join(', ')}</small>` : ''}</div>`).join('') || '<p class="muted small">Ask it something, or give it a job.</p>'}
+    ${agUI.busy ? '<div class="ag-msg ag-msg--agent"><i>thinking…</i></div>' : ''}</div>
+    <div class="row"><input id="ag-q" placeholder="Message ${esc(a.name)}" autocomplete="off"><button class="btn btn--solid" data-agsend ${agUI.busy ? 'disabled' : ''}>Send</button></div></section>`;
+}
+function agMemory() {
+  const M = AGS.memory || [];
+  return `<section class="block"><div class="block-h"><h2 class="serif">Shared memory</h2><span class="muted">${M.length}</span></div>
+    <p class="intro small">Facts every agent sees. Agents add to it with “remember”; you can too. Also saved as ~/HomeHQ/data/agents/CONTEXT.md.</p>
+    <div class="row"><input id="ag-mem" placeholder="Georgia prefers oat milk"><button class="btn" data-agmemadd>Add</button></div>
+    <ul class="status">${M.slice(0, 60).map(m => `<li><b>${esc(agName(m.by) || m.by)}</b><span>${esc(m.text)} <button class="linkbtn small" data-agmemdel="${esc(m.id)}">remove</button></span></li>`).join('') || '<li><span class="muted">Nothing yet.</span></li>'}</ul></section>`;
+}
+function agActivity() {
+  const R = AGS.runs || [], byParent = {};
+  R.forEach(r => { (byParent[r.parent || ''] = byParent[r.parent || ''] || []).push(r); });
+  const row = (r, depth) => `<div class="ag-run ${r.status}" style="margin-left:${depth * 18}px"><button class="ag-run-h" data-agrun="${esc(r.id)}"><span>${esc(agName(r.agent))}</span><small>${esc(r.channel)}${r.who ? ' · ' + esc(person(r.who).name) : ''} · ${r.status === 'running' ? 'working…' : ago(r.at)}${r.ms ? ' · ' + (r.ms / 1000).toFixed(1) + 's' : ''}</small></button>
+    <div class="ag-run-io"><span>“${esc((r.input || '').slice(0, 140))}”</span>${r.output || r.error ? `<b>→ ${esc((r.output || r.error || '').slice(0, 220))}</b>` : ''}</div>
+    ${agUI.open[r.id] ? `<ol class="ag-steps">${(r.steps || []).map(s => `<li><b>${esc(s.tool)}</b> <code>${esc(s.input || '')}</code><br><small>${esc(s.result || '…')}</small></li>`).join('') || '<li class="muted">No tools used.</li>'}</ol>` : (r.steps || []).length ? `<small class="muted">${r.steps.length} step${r.steps.length > 1 ? 's' : ''}: ${r.steps.map(s => esc(s.tool)).join(', ')} · tap to expand</small>` : ''}
+    ${(byParent[r.id] || []).map(c => row(c, depth + 1)).join('')}</div>`;
+  return `<section class="block"><div class="block-h"><h2 class="serif">Activity</h2><span class="muted">live</span></div>
+    <div class="ag-runs">${(byParent[''] || []).slice(0, 40).map(r => row(r, 0)).join('') || '<p class="muted">Nothing yet. Chat with an agent or text the house.</p>'}</div></section>`;
+}
+function agentRunEvent(run) {
+  if (!AGS) return;
+  const i = AGS.runs.findIndex(r => r.id === run.id);
+  if (i >= 0) AGS.runs[i] = run; else AGS.runs.unshift(run);
+  if (section === 'agents') rerenderSoon();
 }
 let askUI = { q: '', a: '', busy: false };
 function assistant() {
@@ -424,7 +498,7 @@ function music() {
   </section>`;
 }
 let showPast = false; const moreKeys = {};
-const RENDER = { overview, family, calendar, chores, shopping, photos, music, home, assistant, settings };
+const RENDER = { overview, family, calendar, chores, shopping, photos, music, home, assistant, agents, settings };
 
 // ------------------------------------------------------------------ shell
 function render() {
@@ -455,6 +529,7 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', async e => {
   const t = e.target, ctx = itemAt(t);
+  if (t.dataset && t.dataset.agcan) { t.parentNode.classList.toggle('is-on', t.checked); return; }
   if (t.id === 'ai-model') { await call('/api/admin/assistant', { method: 'POST', body: { model: t.value } }); flash('Model saved'); return; }
   if (t.hasAttribute && t.hasAttribute('data-aion')) {
     try { const r = await call('/api/admin/assistant', { method: 'POST', body: { enabled: t.checked } }); flash(t.checked ? (r.status && r.status.state === 'listening' ? 'Listening for texts' : 'On · see the steps above') : 'Off'); } catch (e2) { flash(e2.message, true); }
@@ -591,6 +666,38 @@ document.addEventListener('click', async e => {
       await call('/api/admin/config', { method: 'POST', body: { settings: { lat: r.lat, lon: r.lon, place: r.name.split(',')[0] } } });
       await call('/api/admin/weather/refresh', { method: 'POST' }); flash('Weather set'); return reload();
     }
+    if (d.agnew != null || d.agsub) { agUI.edit = { name: '', icon: '🤖', role: '', instructions: '', model: 'claude-haiku-5-5', parent: d.agsub || null, tools: [], can: [], enabled: true, channels: [] }; render(); document.getElementById('ag-editor').scrollIntoView({ behavior: 'smooth' }); return; }
+    if (d.agedit) { agUI.edit = JSON.parse(JSON.stringify(AGS.agents.find(a => a.id === d.agedit))); render(); document.getElementById('ag-editor').scrollIntoView({ behavior: 'smooth' }); return; }
+    if (d.agcancel != null) { agUI.edit = null; return render(); }
+    if (d.agsave != null) {
+      const e = agUI.edit, agent = Object.assign({}, e, {
+        name: $('#ag-name').value.trim(), icon: $('#ag-icon').value.trim(), role: $('#ag-role').value.trim(), instructions: $('#ag-instr').value,
+        model: $('#ag-model').value, parent: $('#ag-parent').value || null, enabled: $('#ag-on').checked,
+        channels: $('#ag-imsg').checked ? ['imessage'] : [],
+        tools: [...document.querySelectorAll('[data-agtool]:not([disabled])')].filter(i => i.checked).map(i => i.dataset.agtool),
+        can: [...document.querySelectorAll('[data-agcan]')].filter(i => i.checked).map(i => i.dataset.agcan)
+      });
+      if (!agent.name) return flash('Give it a name', true);
+      try {
+        await call('/api/admin/agents/save', { method: 'POST', body: { agent } });
+        if (e.id === 'plex' && $('#pl-movies')) await call('/api/admin/agents/settings', { method: 'POST', body: { plex: { moviesPath: $('#pl-movies').value, inboxPath: $('#pl-inbox').value } } });
+        agUI.edit = null; flash('Saved'); AGS = null; return loadAgents();
+      } catch (e2) { return flash(e2.message, true); }
+    }
+    if (d.agdel != null) { if (!confirm('Delete ' + agUI.edit.name + '?')) return; try { await call('/api/admin/agents/delete', { method: 'POST', body: { id: agUI.edit.id } }); agUI.edit = null; AGS = null; return loadAgents(); } catch (e2) { return flash(e2.message, true); } }
+    if (d.agchat) { agUI.chat = d.agchat; render(); const el = document.getElementById('ag-chat'); if (el) el.scrollIntoView({ behavior: 'smooth' }); setTimeout(() => { const i = $('#ag-q'); if (i) i.focus(); }, 300); return; }
+    if (d.agclear != null) { agUI.logs[agUI.chat] = []; await call('/api/admin/agents/clear-chat', { method: 'POST', body: { id: agUI.chat } }); return render(); }
+    if (d.agsend != null) {
+      const q = $('#ag-q').value.trim(); if (!q) return;
+      const id = agUI.chat, log = agUI.logs[id] = agUI.logs[id] || [];
+      log.push({ role: 'you', text: q }); agUI.busy = true; render();
+      try { const r = await call('/api/admin/agents/chat', { method: 'POST', body: { id, text: q } }); log.push({ role: 'agent', text: r.output, steps: r.run && r.run.steps }); }
+      catch (e2) { log.push({ role: 'agent', text: 'Error: ' + e2.message }); }
+      agUI.busy = false; render(); setTimeout(() => { const i = $('#ag-q'); if (i) i.focus(); }, 50); return;
+    }
+    if (d.agmemadd != null) { const v = $('#ag-mem').value.trim(); if (!v) return; await call('/api/admin/agents/memory', { method: 'POST', body: { text: v } }); AGS = null; return loadAgents(); }
+    if (d.agmemdel) { await call('/api/admin/agents/memory', { method: 'POST', body: { delete: d.agmemdel } }); AGS = null; return loadAgents(); }
+    if (d.agrun) { agUI.open[d.agrun] = !agUI.open[d.agrun]; return render(); }
     if (d.aikey != null) {
       const k = $('#ai-key').value.trim(); if (!k) return flash('Paste the key first', true);
       flash('Checking with Claude…');
@@ -736,7 +843,8 @@ async function boot() {
       es.onmessage = m => {
         const msg = JSON.parse(m.data);
         if (msg.type === 'hello' && msg.rev > rev) reload().catch(() => {});
-        if (msg.type === 'patch') { rev = Math.max(rev, msg.rev); if (msg.client === CLIENT) return; Object.assign(S, msg.patch); rerenderSoon(); }
+        if (msg.type === 'patch') { rev = Math.max(rev, msg.rev); if (msg.client === CLIENT) return; Object.assign(S, msg.patch); if (section !== 'agents') rerenderSoon(); }
+        if (msg.type === 'agent-run') agentRunEvent(msg.run);
       };
     }
   } catch (e) { if (e.message !== 'login') $('#app').textContent = 'Can’t reach the Home HQ server: ' + e.message; }
@@ -744,3 +852,8 @@ async function boot() {
 window.addEventListener('hashchange', () => { const h = location.hash.slice(1); if (RENDER[h]) { section = h; openItem = null; window.scrollTo(0, 0); if (S) render(); } });
 if (RENDER[location.hash.slice(1)]) section = location.hash.slice(1);
 boot();
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target && e.target.id === 'ag-q') { e.preventDefault(); const b = document.querySelector('[data-agsend]'); if (b && !b.disabled) b.click(); }
+  if (e.key === 'Enter' && e.target && e.target.id === 'ai-q') { e.preventDefault(); const b = document.querySelector('[data-aiask]'); if (b && !b.disabled) b.click(); }
+});

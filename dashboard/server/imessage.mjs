@@ -49,7 +49,7 @@ export function normHandle(h) {
   return d.length >= 10 ? d.slice(-10) : d;
 }
 
-export function createIMessage({ secrets, saveSecrets, log, assistant, people }) {
+export function createIMessage({ secrets, saveSecrets, log, agents }) {
   let status = { state: 'off' };
   let timer = null, lastRow = 0, busy = false;
   const queue = [];
@@ -124,7 +124,13 @@ export function createIMessage({ secrets, saveSecrets, log, assistant, people })
         const images = row.att ? await attachmentsFor(row.id) : [];
         if (!text.trim() && !images.length) continue;
         status.last = { at: new Date().toISOString(), from: who };
-        const answer = /^\s*(forget|reset|new chat)\s*$/i.test(text) ? (assistant.forget(row.handle), 'Okay, starting fresh.') : await assistant.reply({ text, images, who, handle: normHandle(row.handle) });
+        const convo = 'im:' + normHandle(row.handle);
+        let answer, m;
+        if (/^\s*(forget|reset|new chat)\s*$/i.test(text)) { agents.clearHistory(convo); answer = 'Okay, starting fresh.'; }
+        else {
+          const fd = agents.frontDesk();
+          answer = (await agents.run(fd.id, { text, images, who, channel: 'imessage', convo })).output;
+        }
         await send(row.handle, answer.slice(0, 1800));
       } catch (e) {
         log('imessage:', e.message);
@@ -154,7 +160,13 @@ export function createIMessage({ secrets, saveSecrets, log, assistant, people })
     timer = setInterval(poll, 3000);
     return status;
   }
+  // Send a message to a household member (by person id), e.g. when a Builder job finishes
+  async function notify(person, text) {
+    const a = (cfg().allow || []).find(x => x.person === person && x.handle);
+    if (!a || !IS_MAC) { log('notify (no iMessage for ' + person + '):', text.slice(0, 120)); return false; }
+    try { await send(a.handle, text.slice(0, 1800)); return true; } catch (e) { log('notify:', e.message); return false; }
+  }
   async function testSend(handle) { await send(handle, 'Hi! This is your home assistant on the Mac mini. Text me anytime: "what’s on the shopping list?", a photo of something we need, "turn the lamp warm white", or "next train?"'); }
 
-  return { start, status: () => Object.assign({ node: process.execPath }, status), testSend, normHandle };
+  return { start, status: () => Object.assign({ node: process.execPath }, status), testSend, notify, normHandle };
 }

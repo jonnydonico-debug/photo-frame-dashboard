@@ -1,16 +1,14 @@
-// The household assistant behind iMessage: Claude (via the Claude API) with tools for the
-// dashboard's own data and controls. It can only do what these tools allow: no shell, no files.
+// Household tools the agents can be given: shopping list, notes, lights, music, Apple TV, BART and
+// weather summary, frame messages. They act only on the dashboard's own data and devices.
 import crypto from 'node:crypto';
 
 const API = process.env.HOMEHQ_CLAUDE_API || 'https://api.anthropic.com/v1/messages'; // override only for tests
 export const MODELS = [['claude-sonnet-5-5', 'Claude Sonnet 5.5 (best at photos, about 1¢ a message)'], ['claude-haiku-5-5', 'Claude Haiku 5.5 (cheapest, fine for simple texts)']];
 
-export function createAssistant(ctx) {
-  const { getState, commit, secrets, log, devices: D, spotify, tv, govee, announce } = ctx;
+export function createHouseTools(ctx) {
+  const { getState, commit, devices: D, spotify, tv, govee, announce } = ctx;
   const S = () => getState();
   const id = p => p + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
-  const history = new Map(); // handle -> [{role, content}] (text only, last few turns)
-  let usage = { messages: 0, inTok: 0, outTok: 0, since: new Date().toISOString() };
 
   // ---------------------------------------------------------------- helpers over household data
   function categorize(name) {
@@ -152,64 +150,23 @@ export function createAssistant(ctx) {
     return { error: 'Unknown tool' };
   }
 
-  // ---------------------------------------------------------------- one conversation turn
-  function system(who) {
-    const st = S(), title = (st.settings && st.settings.title) || 'Home';
-    const person = (st.people || []).find(p => p.id === who);
-    return `You are the household assistant for ${title}, the home of JD and Georgia in El Cerrito, CA. You run on their Mac mini and talk to them over iMessage.
-You're texting with ${person ? person.name : 'a member of the household'}. It is ${new Date().toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.
-Write like a helpful friend texting: short, warm, plain text. No markdown, no bullet symbols, no headings. Use line breaks for lists. Keep most replies under 400 characters.
-Use the tools for anything about the house (shopping list, notes, lights, music, Apple TV, BART, weather) rather than guessing, and confirm what you did in a few words.
-When they send a photo of a product, packaging, receipt or handwritten list, work out the item(s) and add them to the shopping list with a short generic name (put brand/size in the note), then say what you added. If a photo is ambiguous, ask.
-For general questions (recipes, facts, advice) just answer from your own knowledge; you can't browse the web, so say so if something needs live information you don't have.
-Never claim to have done something a tool didn't confirm.`;
-  }
+  return { defs: TOOLS, run: runTool, summary };
+}
 
-  async function call(body) {
-    const key = secrets.assistant && secrets.assistant.apiKey;
-    if (!key) throw Object.assign(new Error('No Claude API key set'), { status: 400 });
-    const r = await fetch(API, { method: 'POST', signal: AbortSignal.timeout(90000), headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify(body) });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw Object.assign(new Error((j.error && j.error.message) || 'Claude API error ' + r.status), { status: r.status });
-    if (j.usage) { usage.inTok += j.usage.input_tokens || 0; usage.outTok += j.usage.output_tokens || 0; }
-    return j;
-  }
-
-  // text: the message; images: [{ media_type, data(base64) }]; who: person id; handle: conversation key
-  async function reply({ text, images, who, handle }) {
-    const model = (secrets.assistant && secrets.assistant.model) || MODELS[0][0];
-    const past = (history.get(handle) || []).slice(-12);
-    const content = [];
-    for (const im of (images || []).slice(0, 4)) content.push({ type: 'image', source: { type: 'base64', media_type: im.media_type, data: im.data } });
-    content.push({ type: 'text', text: text && text.trim() ? text : (images && images.length ? '(sent a photo)' : '(empty message)') });
-    const messages = past.concat([{ role: 'user', content }]);
-    let out = '';
-    for (let round = 0; round < 8; round++) {
-      const j = await call({ model, max_tokens: 1024, system: system(who), tools: TOOLS, messages });
-      messages.push({ role: 'assistant', content: j.content });
-      const uses = (j.content || []).filter(c => c.type === 'tool_use');
-      const said = (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n').trim();
-      if (!uses.length || j.stop_reason !== 'tool_use') { out = said; break; }
-      const results = [];
-      for (const u of uses) {
-        let res;
-        try { res = await runTool(u.name, u.input || {}, who); } catch (e) { res = { error: e.message }; }
-        results.push({ type: 'tool_result', tool_use_id: u.id, content: JSON.stringify(res).slice(0, 12000) });
-      }
-      messages.push({ role: 'user', content: results });
-    }
-    usage.messages++;
-    // Remember the conversation as plain text (photos aren't kept)
-    const keep = past.concat([{ role: 'user', content: (text || '') + (images && images.length ? ' [sent ' + images.length + ' photo' + (images.length > 1 ? 's' : '') + ']' : '') }, { role: 'assistant', content: out || '(done)' }]);
-    history.set(handle, keep.slice(-12));
-    return out || 'Done.';
-  }
-
-  async function test() {
-    const model = (secrets.assistant && secrets.assistant.model) || MODELS[0][0];
-    const j = await call({ model, max_tokens: 20, messages: [{ role: 'user', content: 'Reply with just: ok' }] });
-    return (j.content || []).map(c => c.text || '').join('').trim();
-  }
-
-  return { reply, test, usage: () => usage, forget: h => history.delete(h), TOOLS };
+// ---------------------------------------------------------------- Claude API
+const usage = { calls: 0, inTok: 0, outTok: 0, since: new Date().toISOString() };
+export function claudeUsage() { return usage; }
+export async function callClaude(secrets, body) {
+  const key = secrets.assistant && secrets.assistant.apiKey;
+  if (!key) throw Object.assign(new Error('No Claude API key set (Admin → iMessage)'), { status: 400 });
+  const r = await fetch(API, { method: 'POST', signal: AbortSignal.timeout(120000), headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error((j.error && j.error.message) || 'Claude API error ' + r.status), { status: r.status });
+  usage.calls++;
+  if (j.usage) { usage.inTok += j.usage.input_tokens || 0; usage.outTok += j.usage.output_tokens || 0; }
+  return j;
+}
+export async function testKey(secrets, model) {
+  const j = await callClaude(secrets, { model: model || MODELS[0][0], max_tokens: 20, messages: [{ role: 'user', content: 'Reply with just: ok' }] });
+  return (j.content || []).map(c => c.text || '').join('').trim();
 }
