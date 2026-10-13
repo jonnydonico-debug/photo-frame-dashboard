@@ -250,7 +250,8 @@ const AG = createAgents({
   },
   extraTools: () => [PLX],
   notify: (person, text) => IM.notify(person, text),
-  announce: text => broadcast({ type: 'announce', text, icon: 'bell' })
+  announce: text => broadcast({ type: 'announce', text, icon: 'bell' }),
+  costs: () => COSTS.summary()
 });
 PLX = createPlexTools({ plex: (p, o) => plex(p, o), plexOk: () => !!(secrets.plex.url && secrets.plex.token), settings: () => AG.settings(), log });
 const IM = createIMessage({ secrets, saveSecrets: () => saveSecrets(), log, agents: AG });
