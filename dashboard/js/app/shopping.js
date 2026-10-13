@@ -5,8 +5,10 @@
   var V = { store: 'all', q: '', showDone: false };
 
   function list() { return D.groceries = D.groceries || []; }
-  function stores() { return D.stores && D.stores.length ? D.stores : [{ id: 'store', name: 'Groceries' }]; }
-  function inStore(g) { return V.store === 'all' || g.store === V.store; }
+  function stores() { return D.stores || []; }
+  function storeName(id) { var s = id && stores().filter(function (x) { return x.id === id; })[0]; return s ? s.name : ''; }
+  // A store tab shows that store's items plus the ones that can be bought anywhere (no store)
+  function inStore(g) { return V.store === 'all' || g.store === V.store || !storeName(g.store); }
   function categorize(name) {
     var n = name.toLowerCase(), C = D.catalog || [];
     var hit = C.filter(function (c) { return c[0].toLowerCase() === n; })[0] ||
@@ -26,7 +28,7 @@
       if (old) { old.done = false; old.qty = 1; }
       else {
         var cat = (D.catalog || []).filter(function (c) { return c[0].toLowerCase() === name.toLowerCase(); })[0];
-        var st = V.store === 'all' ? (stores()[0].id) : V.store;
+        var st = V.store === 'all' ? '' : V.store;
         list().push({ id: gid(), name: cat ? cat[0] : name.charAt(0).toUpperCase() + name.slice(1), cat: categorize(name), qty: 1, store: st, done: false, note: '' });
       }
       App.toast('Added ' + App.esc(name), { icon: 'check', ms: 1400 });
@@ -62,9 +64,15 @@
     var order = ((D.catOrder && D.catOrder.all) || []).concat(['Other']);
     var cats = order.filter(function (c, i) { return order.indexOf(c) === i; });
     open.forEach(function (g) { if (cats.indexOf(g.cat) < 0) cats.push(g.cat); });
-    var groups = cats.map(function (c) { return { c: c, items: open.filter(function (g) { return (g.cat || 'Other') === c; }) }; }).filter(function (x) { return x.items.length; });
+    var groups;
+    if (open.some(function (g) { return storeName(g.store); })) {
+      // Split by store once anything has one; categories stay in aisle order inside each store
+      var sorted = function (l) { return l.slice().sort(function (a, b) { return cats.indexOf(a.cat || 'Other') - cats.indexOf(b.cat || 'Other'); }); };
+      groups = stores().filter(function (st) { return V.store === 'all' || st.id === V.store; }).map(function (st) { return { c: st.name, store: true, items: sorted(open.filter(function (g) { return g.store === st.id; })) }; })
+        .concat([{ c: V.store === 'all' ? 'Any store' : 'Anywhere', store: true, items: sorted(open.filter(function (g) { return !storeName(g.store); })) }]).filter(function (x) { return x.items.length; });
+    } else groups = cats.map(function (c) { return { c: c, items: open.filter(function (g) { return (g.cat || 'Other') === c; }) }; }).filter(function (x) { return x.items.length; });
     return (open.length ? groups.map(function (gr) {
-      return '<div class="sec-l">' + App.esc(gr.c) + '</div><div class="group">' + gr.items.map(rowHTML).join('') + '</div>';
+      return '<div class="sec-l' + (gr.store ? ' sec-l--store' : '') + '">' + (gr.store ? App.icon('pin', 14) : '') + App.esc(gr.c) + '</div><div class="group">' + gr.items.map(rowHTML).join('') + '</div>';
     }).join('') : '<div class="empty">' + App.icon('check', 30) + '<b>All stocked up</b><span>Nothing left to buy.</span></div>') +
       usuals() +
       (done.length ? '<button class="done-h" data-toggle-done>' + App.icon('check', 18) + '<span>Got it (' + done.length + ')</span><small>' + (V.showDone ? 'Hide' : 'Show') + '</small></button>' +
@@ -77,7 +85,8 @@
     App.sheet('<div class="sh-pad"><h2 class="sh-h">' + App.esc(g.name) + '</h2>' +
       '<div class="stepper"><button data-q="-1" aria-label="Fewer">' + App.icon('minus', 22) + '</button><b data-qv>' + (g.qty || 1) + '</b><button data-q="1" aria-label="More">' + App.icon('plus', 22) + '</button></div>' +
       '<label class="fld"><span>Note</span><input data-note value="' + App.esc(g.note || '') + '" placeholder="Brand, size, anything…" maxlength="80"></label>' +
-      (stores().length > 1 ? '<div class="seg">' + stores().map(function (s) { return '<button data-st="' + s.id + '" class="' + (g.store === s.id ? 'is-on' : '') + '">' + App.esc(s.name) + '</button>'; }).join('') + '</div>' : '') +
+      '<div class="sec-l">Where to buy</div><div class="chips st-chips">' + [{ id: '', name: 'Any store' }].concat(stores()).map(function (s) { return '<button data-st="' + App.esc(s.id) + '" class="chip' + ((storeName(g.store) ? g.store : '') === s.id ? ' is-on' : '') + '">' + App.esc(s.name) + '</button>'; }).join('') + '</div>' +
+      '<div class="addbar addbar--store">' + App.icon('pin', 20) + '<input data-newstore placeholder="Another store…" maxlength="40" enterkeyhint="done" autocapitalize="words"></div>' +
       '<div class="sh-actions"><button class="btn btn--danger" data-del>Remove</button><button class="btn btn--solid" data-close>Done</button></div></div>', {
       onMount: function (s) {
         s.addEventListener('click', function (e) {
@@ -90,6 +99,15 @@
           }
         });
         s.querySelector('[data-note]').addEventListener('change', function (e) { g.note = e.target.value.trim(); App.save(); });
+        var ns = s.querySelector('[data-newstore]');
+        ns.addEventListener('keydown', function (e) {
+          if (e.key !== 'Enter' || !ns.value.trim()) return;
+          e.preventDefault();
+          fetch('/api/home/store', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-HQ': '1' }, body: JSON.stringify({ name: ns.value.trim() }) })
+            .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'Couldn’t add the store'); return j; }); })
+            .then(function (j) { if (!storeName(j.id)) D.stores = stores().concat([{ id: j.id, name: j.name }]); g.store = j.id; App.save(); App.closeSheet(); App.toast(App.esc(g.name) + ' · ' + App.esc(j.name), { icon: 'pin', ms: 1600 }); })
+            .catch(function (er) { App.toast(App.esc(er.message), { icon: 'x' }); });
+        });
       },
       onClose: function () { App.rerender(); }
     });
@@ -101,9 +119,11 @@
   App.screen('shopping', {
     render: function (el) {
       var count = list().filter(function (g) { return !g.done && inStore(g); }).length;
-      var ss = stores();
+      var all = list().filter(function (g) { return !g.done; });
+      var ss = stores().filter(function (st) { return st.id === V.store || all.some(function (g) { return g.store === st.id; }); });
+      if (V.store !== 'all' && !ss.length) V.store = 'all';
       el.innerHTML = App.head('Shopping', count ? count + (count === 1 ? ' item to get' : ' items to get') : 'Shared with the frame') +
-        (ss.length > 1 ? '<div class="seg seg--full">' + [{ id: 'all', name: 'All' }].concat(ss).map(function (s) { return '<button data-store="' + s.id + '" class="' + (V.store === s.id ? 'is-on' : '') + '">' + App.esc(s.name) + '</button>'; }).join('') + '</div>' : '') +
+        (ss.length ? '<div class="seg seg--full">' + [{ id: 'all', name: 'All' }].concat(ss).map(function (s) { return '<button data-store="' + s.id + '" class="' + (V.store === s.id ? 'is-on' : '') + '">' + App.esc(s.name) + '</button>'; }).join('') + '</div>' : '') +
         '<form class="addbar">' + App.icon('plus', 22) + '<input type="text" placeholder="Add an item" enterkeyhint="done" autocomplete="off" autocapitalize="sentences" value="' + App.esc(V.q) + '"></form>' +
         '<div class="sh-sug">' + suggestions() + '</div><div class="sh-body">' + body() + '</div>';
       var input = el.querySelector('.addbar input');

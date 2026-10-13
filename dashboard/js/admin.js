@@ -89,10 +89,10 @@ const SCHEMAS = {
     fields: [{ k: 'name', label: 'Name' }, { k: 'from', label: 'From hour (0–23)', type: 'number' }, { k: 'to', label: 'To hour (1–24)', type: 'number' }, { k: 'range', label: 'Label', ph: '6 – 11 AM' }]
   },
   groceries: {
-    title: 'Shopping list', add: () => ({ id: rid('g'), name: 'New item', cat: 'Other', qty: 1, store: ((S.stores || [])[0] || {}).id, done: false, note: '' }),
-    sum: g => `<b class="${g.done ? 'strike' : ''}">${esc(g.name)}${g.qty > 1 ? ' ×' + g.qty : ''}</b><small>${esc(g.cat)} · ${esc(((S.stores || []).find(s => s.id === g.store) || {}).name || '')}${g.note ? ' · ' + esc(g.note) : ''}</small>`,
+    title: 'Shopping list', add: () => ({ id: rid('g'), name: 'New item', cat: 'Other', qty: 1, store: '', done: false, note: '' }),
+    sum: g => `<b class="${g.done ? 'strike' : ''}">${esc(g.name)}${g.qty > 1 ? ' ×' + g.qty : ''}</b><small>${esc(g.cat)} · ${esc(((S.stores || []).find(s => s.id === g.store) || {}).name || 'Any store')}${g.note ? ' · ' + esc(g.note) : ''}</small>`,
     fields: [{ k: 'name', label: 'Item' }, { k: 'qty', label: 'Qty', type: 'number' }, { k: 'cat', label: 'Aisle', type: 'select', opts: () => ((S.catOrder || {}).all || []).concat(['Other']).map(c => [c, c]) },
-      { k: 'store', label: 'Store', type: 'select', opts: () => (S.stores || []).map(s => [s.id, s.name]) }, { k: 'note', label: 'Note' }, { k: 'done', label: 'Got it', type: 'check' }]
+      { k: 'store', label: 'Store', type: 'select', opts: () => [['', 'Any store']].concat((S.stores || []).map(s => [s.id, s.name])) }, { k: 'note', label: 'Note' }, { k: 'done', label: 'Got it', type: 'check' }]
   },
   stores: {
     title: 'Stores', add: () => ({ id: rid('s'), name: 'New store' }), sum: s => `<b>${esc(s.name)}</b>`, fields: [{ k: 'name', label: 'Name' }],
@@ -916,7 +916,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id
 function quickAdd() {
   const inp = $('#quickadd'), name = inp.value.trim(); if (!name) return;
   const cat = (S.catalog || []).find(c => c[0].toLowerCase() === name.toLowerCase());
-  S.groceries.push({ id: rid('g'), name: cat ? cat[0] : name[0].toUpperCase() + name.slice(1), cat: cat ? cat[1] : 'Other', qty: 1, store: ((S.stores || [])[0] || {}).id, done: false, note: '' });
+  S.groceries.push({ id: rid('g'), name: cat ? cat[0] : name[0].toUpperCase() + name.slice(1), cat: cat ? cat[1] : 'Other', qty: 1, store: '', done: false, note: '' });
   save('groceries', true); render(); $('#quickadd').focus();
 }
 

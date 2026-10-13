@@ -12,7 +12,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { createHouseTools, callClaude, MODELS } from './assistant.mjs';
 
-const HOUSE_TOOLS = ['home_summary', 'shopping_list', 'shopping_add', 'shopping_check_off', 'shopping_remove', 'notes_list', 'note_add', 'note_done',
+const HOUSE_TOOLS = ['home_summary', 'shopping_list', 'shopping_add', 'shopping_set_store', 'shopping_check_off', 'shopping_remove', 'notes_list', 'note_add', 'note_done',
   'lights', 'light_set', 'light_scene', 'music', 'apple_tv', 'frame_message'];
 
 export const DEFAULT_AGENTS = [
@@ -49,8 +49,8 @@ export function createAgents(ctx) {
   if (!schedules) schedules = [{ id: 'morning-brief', title: 'Morning brief', agent: 'home', kind: 'task', enabled: false, deliver: 'jd', when: { type: 'weekly', time: '07:30', days: [1, 2, 3, 4, 5] },
     prompt: 'Send a short good-morning brief: today\'s weather, today\'s calendar, the next BART trains, and anything on the shopping list. Keep it to a few lines.', lastRun: 0 }];
   // Tools added in later versions are switched on for the Home agent of existing installs too
-  // (v2 web search + schedules, v3 API costs, v4 to-dos, v5 calendar). Oldest first.
-  const V0 = settings.v || 0, LATEST = 5;
+  // (v2 web search + schedules, v3 API costs, v4 to-dos, v5 calendar, v6 shopping stores). Oldest first.
+  const V0 = settings.v || 0, LATEST = 6;
   if (V0 < LATEST) {
     const h = agents.find(a => a.id === 'home');
     const add = list => { if (h) for (const t of list) if (!(h.tools || []).includes(t)) h.tools = (h.tools || []).concat([t]); };
@@ -58,6 +58,7 @@ export function createAgents(ctx) {
     if (V0 < 3) add(['api_costs']);
     if (V0 < 4) add(['todo_list', 'todo_add', 'todo_done', 'todo_remove']);
     if (V0 < 5) add(['calendar']);
+    if (V0 < 6) add(['shopping_set_store']);
     settings.v = LATEST;
     setTimeout(() => { saveAgents(); saveSettings(); saveSchedules(); }, 0);
   }

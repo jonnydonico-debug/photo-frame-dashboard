@@ -1,6 +1,7 @@
 // Household tools the agents can be given: shopping list, notes, lights, music, Apple TV, BART and
 // weather summary, frame messages. They act only on the dashboard's own data and devices.
 import crypto from 'node:crypto';
+import { resolveStore, storeName } from './stores.mjs';
 
 const API = process.env.HOMEHQ_CLAUDE_API || 'https://api.anthropic.com/v1/messages'; // override only for tests
 export const MODELS = [['claude-sonnet-5-5', 'Claude Sonnet 5.5 (best at photos, about 1¢ a message)'], ['claude-haiku-5-5', 'Claude Haiku 5.5 (cheapest, fine for simple texts)']];
@@ -43,8 +44,9 @@ export function createHouseTools(ctx) {
   // ---------------------------------------------------------------- tools
   const TOOLS = [
     { name: 'home_summary', description: 'Everything at a glance: time, weather, BART departures with walk/drive minutes, shopping list, pinned notes, lights that are on, music and Apple TV.', input_schema: { type: 'object', properties: {} } },
-    { name: 'shopping_list', description: 'The shared shopping list (items still to buy).', input_schema: { type: 'object', properties: {} } },
-    { name: 'shopping_add', description: 'Add items to the shopping list. Use a short generic product name a shopper would recognise, with brand or size in the note.', input_schema: { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, qty: { type: 'integer', minimum: 1 }, note: { type: 'string' } }, required: ['name'] } } }, required: ['items'] } },
+    { name: 'shopping_list', description: 'The shared shopping list (items still to buy), grouped by store. Items without a store can be bought anywhere.', input_schema: { type: 'object', properties: { store: { type: 'string', description: 'Only this store (plus items for any store)' } } } },
+    { name: 'shopping_add', description: 'Add items to the shopping list. Use a short generic product name a shopper would recognise, with brand or size in the note. Set store only when they say where to buy it (e.g. "eggs from Costco", "TJ\u2019s dumplings"); otherwise leave it out. Adding an item that is already on the list with a store moves it to that store.', input_schema: { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, qty: { type: 'integer', minimum: 1 }, note: { type: 'string' }, store: { type: 'string', description: 'Store name as they said it, e.g. Costco, Trader Joe\u2019s, Target' } }, required: ['name'] } } }, required: ['items'] } },
+    { name: 'shopping_set_store', description: 'Move items already on the list to a store, or back to "any store" (store empty).', input_schema: { type: 'object', properties: { names: { type: 'array', items: { type: 'string' } }, store: { type: 'string' } }, required: ['names'] } },
     { name: 'shopping_check_off', description: 'Mark items as bought (they move to the "got it" section).', input_schema: { type: 'object', properties: { names: { type: 'array', items: { type: 'string' } } }, required: ['names'] } },
     { name: 'shopping_remove', description: 'Delete items from the shopping list entirely.', input_schema: { type: 'object', properties: { names: { type: 'array', items: { type: 'string' } } }, required: ['names'] } },
     { name: 'notes_list', description: 'All sticky notes on the frame, newest first.', input_schema: { type: 'object', properties: {} } },
@@ -62,18 +64,47 @@ export function createHouseTools(ctx) {
     const st = S();
     switch (name) {
       case 'home_summary': return summary();
-      case 'shopping_list': return open().map(g => ({ name: g.name, qty: g.qty, note: g.note || undefined }));
+      case 'shopping_list': {
+        const want = a.store ? resolveStore(st.stores, a.store).id : null;
+        const out = {};
+        for (const g of open()) {
+          if (want && g.store && g.store !== want) continue;
+          const k = storeName(st.stores, g.store) || 'Any store';
+          (out[k] = out[k] || []).push({ name: g.name, qty: g.qty, note: g.note || undefined });
+        }
+        return out;
+      }
+      case 'shopping_set_store': {
+        const r = resolveStore(st.stores, a.store);
+        let list = (st.groceries || []).slice(); const moved = [], missing = [];
+        for (const n of a.names || []) {
+          const g = findItem(n, list.filter(x => !x.done));
+          if (!g) { missing.push(n); continue; }
+          list = list.map(x => x === g ? Object.assign({}, x, { store: r.id }) : x); moved.push(g.name);
+        }
+        const patch = { groceries: list }; if (r.stores !== st.stores) patch.stores = r.stores;
+        commit(patch, 'assistant');
+        return { moved, to: r.name || 'any store', notOnList: missing };
+      }
       case 'shopping_add': {
-        let list = (st.groceries || []).slice(); const added = [];
+        let list = (st.groceries || []).slice(), stores = st.stores || []; const added = [];
         for (const it of (a.items || []).slice(0, 30)) {
           const nm = String(it.name || '').trim().slice(0, 60); if (!nm) continue;
+          let store = '', where = '';
+          if (it.store) { const r = resolveStore(stores, it.store); stores = r.stores; store = r.id; where = r.name ? ' @ ' + r.name : ''; }
           const have = findItem(nm, list.filter(g => !g.done));
-          if (have && have.name.toLowerCase() === nm.toLowerCase()) { list = list.map(g => g === have ? Object.assign({}, g, { qty: (g.qty || 1) + (it.qty || 1) }) : g); added.push(nm + ' (now x' + ((have.qty || 1) + (it.qty || 1)) + ')'); continue; }
+          if (have && have.name.toLowerCase() === nm.toLowerCase()) {
+            const moving = it.store && have.store !== store;
+            list = list.map(g => g === have ? Object.assign({}, g, moving ? { store } : { qty: (g.qty || 1) + (it.qty || 1) }) : g);
+            added.push(moving ? nm + ' (already on the list, moved to ' + (where ? where.slice(3) : 'any store') + ')' : nm + ' (now x' + ((have.qty || 1) + (it.qty || 1)) + ')' + where);
+            continue;
+          }
           const hit = (st.catalog || []).find(c => c[0].toLowerCase() === nm.toLowerCase());
-          list.push({ id: id('g'), name: hit ? hit[0] : nm.replace(/^./, c => c.toUpperCase()), cat: hit ? hit[1] : categorize(nm), qty: it.qty || 1, store: ((st.stores || [])[0] || {}).id || 'store', done: false, note: String(it.note || '').slice(0, 80), by: who });
-          added.push(nm);
+          list.push({ id: id('g'), name: hit ? hit[0] : nm.replace(/^./, c => c.toUpperCase()), cat: hit ? hit[1] : categorize(nm), qty: it.qty || 1, store, done: false, note: String(it.note || '').slice(0, 80), by: who });
+          added.push(nm + where);
         }
-        commit({ groceries: list }, 'assistant');
+        const patch = { groceries: list }; if (stores !== st.stores) patch.stores = stores;
+        commit(patch, 'assistant');
         return { added };
       }
       case 'shopping_check_off': case 'shopping_remove': {

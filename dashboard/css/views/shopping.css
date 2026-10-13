@@ -67,3 +67,17 @@
 .s-ac-row { display: flex; align-items: center; gap: 12px; min-height: 72px; padding: 0 18px 0 22px; border-radius: 14px; background: var(--card); }
 .s-ac-row b { flex: 1; font-size: 22px; }
 .s-ac-row--new { background: transparent; box-shadow: inset 0 0 0 2px var(--line); }
+
+/* Stores: optional per item; the list splits into store sections when any item has one */
+.s-where { flex: none; display: flex; align-items: center; gap: 4px; height: 44px; padding: 0 12px 0 9px; margin-left: 6px; border-radius: 999px; color: var(--mute); font-size: 15px; font-weight: 600; max-width: 150px; }
+.s-where span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-where:active { background: var(--paper-2); }
+.s-cat--store .s-where span { display: none; }
+.s-cat--store .s-where { padding: 0 12px; }
+.s-cat--store[data-cat="store:"] .s-where span { display: inline; }
+.s-cat--store[data-cat="store:"] .s-where { padding: 0 12px 0 9px; }
+.s-store-h { display: flex; align-items: center; gap: 8px; font-size: 22px; font-weight: 700; letter-spacing: -.01em; color: var(--ink); }
+.s-cat--store .s-cat-h { align-items: center; }
+.s-pick { flex-wrap: wrap; margin-top: 10px; }
+.s-newstore { display: flex; gap: 10px; margin-top: 18px; }
+.s-newstore .s-input { flex: 1; height: 56px; border: 2px solid var(--line); border-radius: 14px; padding: 0 16px; font: 20px var(--sans); background: var(--card); color: var(--ink); }

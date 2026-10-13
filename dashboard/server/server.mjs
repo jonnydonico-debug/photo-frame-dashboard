@@ -16,6 +16,7 @@ import { createAppleTV } from './appletv.mjs';
 import { MODELS, testKey, claudeUsage, setUsageSink } from './assistant.mjs';
 import { createCosts } from './costs.mjs';
 import { createCalendars } from './calendars.mjs';
+import { resolveStore } from './stores.mjs';
 import { createAgents } from './agents.mjs';
 import { createPlexTools } from './plextools.mjs';
 import { createIMessage } from './imessage.mjs';
@@ -137,6 +138,15 @@ if (savedSchema < 5) {
   state.settings.hiddenViews = h;
   state.settings.schema = 5;
   log('Updated saved data to schema 5 (reminders tab, photos tab hidden)');
+  saveSoon();
+}
+if (state.settings.schema < 6) {
+  // v6: stores are optional per item ('' = any store) and created when mentioned.
+  // Drop the placeholder "Groceries" store; items that pointed at it (or nowhere) become "any store".
+  state.stores = (state.stores || []).filter(x => !(x.id === 'store' || x.id === 'grocer' || /^groceries$/i.test(x.name)));
+  state.groceries = (state.groceries || []).map(g => state.stores.some(x => x.id === g.store) ? g : Object.assign({}, g, { store: '' }));
+  state.settings.schema = 6;
+  log('Updated saved data to schema 6 (optional store per shopping item)');
   saveSoon();
 }
 
@@ -498,6 +508,13 @@ async function api(req, res, url) {
       if (p === '/api/home/govee/scenes') return send(res, 200, await GV.scenes(url.searchParams.get('id') || ''));
       if (p === '/api/home/govee/scene' && m === 'POST') { const b = await readBody(req); return send(res, 200, await GV.playScene(String(b.id || ''), String(b.name || ''))); }
       if (p.startsWith('/api/home/tv')) return await TV.route(req, res, p, m, url, readBody, send);
+      if (p === '/api/home/store' && m === 'POST') {
+        // Screens can name a new store (stores are otherwise admin-only)
+        const b = await readBody(req), r = resolveStore(state.stores, b.name);
+        if (!r.id) return send(res, 400, { error: 'Give the store a name' });
+        if (r.stores !== state.stores) commit({ stores: r.stores }, 'server');
+        return send(res, 200, { id: r.id, name: r.name });
+      }
       if (p === '/api/home/reminders' && m === 'POST') {
         const b = await readBody(req);
         if (b.delete) { AG.deleteSchedule(String(b.delete)); return send(res, 200, { ok: true }); }
@@ -855,8 +872,10 @@ async function api(req, res, url) {
     if (sub === 'grocery') {
       if (!b.name) return send(res, 400, { error: 'name required' });
       const hit = (state.catalog || []).find(c => c[0].toLowerCase() === String(b.name).toLowerCase().trim());
-      const g = { id: id('g'), name: hit ? hit[0] : String(b.name).trim().replace(/^./, c => c.toUpperCase()), cat: b.cat || (hit ? hit[1] : 'Other'), qty: +b.qty || 1, store: b.store || ((state.stores || [])[0] || {}).id || 'grocer', done: false, note: b.note || '' };
-      commit({ groceries: (state.groceries || []).concat([g]) }, 'agent'); return send(res, 200, { ok: true, item: g });
+      const r = resolveStore(state.stores, b.store);
+      const g = { id: id('g'), name: hit ? hit[0] : String(b.name).trim().replace(/^./, c => c.toUpperCase()), cat: b.cat || (hit ? hit[1] : 'Other'), qty: +b.qty || 1, store: r.id, done: false, note: b.note || '' };
+      const patch = { groceries: (state.groceries || []).concat([g]) }; if (r.stores !== state.stores) patch.stores = r.stores;
+      commit(patch, 'agent'); return send(res, 200, { ok: true, item: g });
     }
     if (sub === 'grocery-done') {
       const q = String(b.name || '').toLowerCase();
