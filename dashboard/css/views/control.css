@@ -110,3 +110,42 @@
 .sum--empty b { font-size: 34px; font-weight: 400; }
 .sum--empty small { white-space: normal; font-size: 16px; }
 .hc-media { cursor: pointer; }
+
+/* ---------- Govee light extras: colour tint, colour button, offline */
+.tile-more { position: absolute; right: 10px; top: 10px; z-index: 3; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, .7); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+.tile-more i { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px rgba(0, 0, 0, .15); }
+.tile.is-offline { opacity: .55; }
+.tile.is-offline .tile-state::after { content: ' · offline'; }
+
+/* light sheet */
+.ls-row { display: flex; align-items: center; gap: 16px; margin: 6px 0 18px; }
+.ls-range { flex: 1; accent-color: var(--accent, #A8644A); height: 36px; }
+.ls .label { margin: 10px 0 8px; }
+.ls-sw { display: flex; flex-wrap: wrap; gap: 12px; }
+.ls-sw button, .ls-custom { width: 54px; height: 54px; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .08); position: relative; overflow: hidden; }
+.ls-sw button.is-on { box-shadow: 0 0 0 3px var(--card, #fff), 0 0 0 6px var(--ink, #1F1C18); }
+.ls-custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.ls-wh { display: flex; flex-wrap: wrap; gap: 10px; }
+.ls-wh button { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 999px; background: var(--paper-2, #EAE4D9); font-weight: 600; font-size: 17px; }
+.ls-wh button.is-on { box-shadow: 0 0 0 2px var(--ink, #1F1C18); }
+.ls-wh i { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px rgba(0, 0, 0, .15); }
+.ls-scenes, .tv-apps { display: flex; flex-wrap: wrap; gap: 8px; max-height: 210px; overflow-y: auto; }
+.ls-scenes .chip.is-on { background: var(--ink, #1F1C18); color: var(--paper, #fff); }
+.ls-note { color: var(--mute, #8A8276); font-size: 17px; }
+.tv-apps { max-height: 360px; }
+
+/* ---------- Apple TV remote card */
+.hc-tv { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
+.tv-h { display: flex; align-items: center; justify-content: space-between; }
+.tv-h .label { display: inline-flex; align-items: center; gap: 6px; }
+.tv-pw { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--paper-2, #EAE4D9); color: var(--mute, #8A8276); }
+.tv-pw.is-on { background: var(--sage, #6E8069); color: #fff; }
+.tv-now { font-size: 18px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-pad { position: relative; width: 196px; height: 196px; margin: 4px auto; border-radius: 50%; background: var(--paper-2, #EAE4D9); }
+.tv-pad button { position: absolute; width: 64px; height: 64px; display: grid; place-items: center; border-radius: 50%; color: var(--ink-2, #4A443C); }
+.tv-pad button:active { background: rgba(0, 0, 0, .08); }
+.tv-u { left: 66px; top: 2px; } .tv-d { left: 66px; bottom: 2px; } .tv-l { left: 2px; top: 66px; } .tv-r { right: 2px; top: 66px; }
+.tv-pad .tv-ok { left: 58px; top: 58px; width: 80px; height: 80px; background: var(--card, #FCFAF6); font-weight: 700; font-size: 18px; box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+.tv-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.tv-row button { height: 46px; border-radius: 14px; background: var(--paper-2, #EAE4D9); display: grid; place-items: center; font-weight: 600; font-size: 15px; }
+.tv-row button:active, .tv-pw:active { transform: scale(.94); }

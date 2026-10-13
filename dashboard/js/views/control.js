@@ -24,12 +24,99 @@
     }, d.flaky ? 2600 : 600);
   };
 
+  // ------------------------------------------------------------ colour helpers (Govee lights)
+  function rgba(hex, a) { var n = parseInt(String(hex).slice(1), 16); return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')'; }
+  // Rough colour of white light at a colour temperature, for the tile tint
+  function kelvinHex(k) { return k <= 2900 ? '#FFC27A' : k <= 3600 ? '#FFD9A8' : k <= 4600 ? '#FFEBD2' : k <= 5600 ? '#FFF5EA' : '#F2F4FF'; }
+  var SWATCHES = [['#FF3B1F', 'Red'], ['#FF7A1A', 'Orange'], ['#FFB020', 'Amber'], ['#FFE14D', 'Yellow'], ['#5FD068', 'Green'], ['#2EC4B6', 'Teal'],
+    ['#3A86FF', 'Blue'], ['#7B4DFF', 'Purple'], ['#D94DFF', 'Magenta'], ['#FF5FA2', 'Pink']];
+  var WHITES = [[2200, 'Candle'], [2700, 'Warm'], [4000, 'Neutral'], [5500, 'Daylight'], [6500, 'Cool']];
+  function post(url, body) {
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-HQ': '1' }, body: JSON.stringify(body || {}) })
+      .then(function (r) { return r.text().then(function (t) { var j = {}; try { j = JSON.parse(t); } catch (e) {} if (!r.ok) throw new Error(j.error || 'Couldn’t reach the Mac mini'); return j; }); });
+  }
+  App.lightSheet = function (id) {
+    var d = dev(id); if (!d) return;
+    var g = d.gv || {}, kel = g.kelvin;
+    App.sheet('<div class="sheet-pad ls"><div class="label">' + App.esc(d.name) + '</div><h2 class="serif sheet-h" data-ls-state>' + (d.on ? (d.level || 100) + '%' : 'Off') + '</h2>' +
+      '<div class="ls-row"><button class="btn' + (d.on ? '' : ' btn--solid') + '" data-ls-power>' + App.icon('bulb', 22) + (d.on ? 'Turn off' : 'Turn on') + '</button>' +
+      '<input class="ls-range" type="range" min="1" max="100" value="' + (d.level || 100) + '" data-ls-level aria-label="Brightness"></div>' +
+      (g.color ? '<div class="label">Colour</div><div class="ls-sw">' + SWATCHES.map(function (c) { return '<button data-ls-color="' + c[0] + '" class="' + (d.color === c[0] ? 'is-on' : '') + '" style="background:' + c[0] + '" aria-label="' + c[1] + '"></button>'; }).join('') +
+        '<label class="ls-custom" aria-label="Pick any colour" style="background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red)"><input type="color" value="' + (d.color || '#FFB020') + '" data-ls-pick></label></div>' : '') +
+      (kel ? '<div class="label">Whites</div><div class="ls-wh">' + WHITES.filter(function (w) { return w[0] >= kel[0] - 300 && w[0] <= kel[1] + 300; }).map(function (w) {
+        var k = Math.max(kel[0], Math.min(kel[1], w[0]));
+        return '<button data-ls-k="' + k + '" class="' + (d.kelvin === k && !d.color ? 'is-on' : '') + '"><i style="background:' + kelvinHex(k) + '"></i>' + w[1] + '</button>'; }).join('') + '</div>' : '') +
+      '<div class="label">Govee scenes</div><div class="ls-scenes"><span class="ls-note">Loading scenes…</span></div></div>', {
+      cls: 'sheet--wide',
+      onMount: function (s, close) {
+        function set(patch) { App.setDevice(d.id, patch); s.querySelector('[data-ls-state]').textContent = d.on ? (d.level || 100) + '%' : 'Off'; }
+        s.addEventListener('click', function (e) {
+          var t;
+          if (e.target.closest('[data-ls-power]')) { set({ on: !d.on, level: d.level || 100 }); close(); return; }
+          if ((t = e.target.closest('[data-ls-color]'))) { set({ on: true, color: t.dataset.lsColor, kelvin: null }); App.$$('[data-ls-color],[data-ls-k]', s).forEach(function (b) { b.classList.toggle('is-on', b === t); }); return; }
+          if ((t = e.target.closest('[data-ls-k]'))) { set({ on: true, kelvin: +t.dataset.lsK, color: null }); App.$$('[data-ls-color],[data-ls-k]', s).forEach(function (b) { b.classList.toggle('is-on', b === t); }); return; }
+          if ((t = e.target.closest('[data-ls-scene]'))) {
+            App.$$('[data-ls-scene]', s).forEach(function (b) { b.classList.toggle('is-on', b === t); });
+            post('/api/home/govee/scene', { id: d.id, name: t.dataset.lsScene }).then(function () { App.toast('<b>' + App.esc(t.dataset.lsScene) + '</b> on ' + App.esc(d.name), { icon: 'bulb', ms: 2200 }); })
+              .catch(function (er) { App.toast(App.esc(er.message), { tone: 'error', icon: 'bulb' }); });
+          }
+        });
+        s.querySelector('[data-ls-level]').addEventListener('change', function (e) { set({ on: true, level: +e.target.value }); });
+        var pick = s.querySelector('[data-ls-pick]');
+        if (pick) pick.addEventListener('change', function (e) { set({ on: true, color: e.target.value.toUpperCase(), kelvin: null }); });
+        fetch('/api/home/govee/scenes?id=' + encodeURIComponent(d.id), { cache: 'no-store' }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error); return j; }); })
+          .then(function (list) {
+            var box = s.querySelector('.ls-scenes'); if (!box) return;
+            box.innerHTML = list.length ? list.slice(0, 60).map(function (o) { return '<button class="chip" data-ls-scene="' + App.esc(o.name) + '">' + App.esc(o.name) + '</button>'; }).join('') : '<span class="ls-note">This light has no Govee scenes.</span>';
+          }).catch(function () { var box = s.querySelector('.ls-scenes'); if (box) box.innerHTML = '<span class="ls-note">Scenes aren’t available right now.</span>'; });
+      }
+    });
+  };
+
+  // ------------------------------------------------------------ Apple TV
+  function tvCard() {
+    var T = D.tv || {};
+    if (!T.paired) return '';
+    var P = T.playing || {}, asleep = T.power === 'off';
+    var line = !T.connected ? 'Not connected' : asleep ? 'Asleep' : P.title ? App.esc(P.title) + (P.artist ? ' · ' + App.esc(P.artist) : '') : T.app ? App.esc(T.app.name) : 'Home screen';
+    return '<div class="tv-h"><span class="label">' + App.icon('tv', 16) + ' ' + App.esc(T.name || 'Apple TV') + '</span>' +
+      '<button class="tv-pw' + (asleep ? '' : ' is-on') + '" data-tv-power aria-label="Power">' + App.icon('power', 20) + '</button></div>' +
+      '<div class="tv-now">' + line + '</div>' +
+      '<div class="tv-pad"><button data-tv="up" class="tv-u" aria-label="Up">' + App.icon('up', 26) + '</button><button data-tv="left" class="tv-l" aria-label="Left">' + App.icon('left', 26) + '</button>' +
+      '<button data-tv="select" class="tv-ok" aria-label="Select">OK</button><button data-tv="right" class="tv-r" aria-label="Right">' + App.icon('right', 26) + '</button><button data-tv="down" class="tv-d" aria-label="Down">' + App.icon('down', 26) + '</button></div>' +
+      '<div class="tv-row"><button data-tv="menu">Back</button><button data-tv="home" aria-label="TV home">' + App.icon('home', 20) + '</button>' +
+      '<button data-tv="play_pause" aria-label="Play or pause">' + App.icon(P.playing ? 'pause' : 'play', 20) + '</button>' +
+      '<button data-tv="volume_down" aria-label="Volume down">' + App.icon('minus', 20) + '</button><button data-tv="volume_up" aria-label="Volume up">' + App.icon('plus', 20) + '</button>' +
+      '<button data-tv-apps aria-label="Apps">Apps</button></div>';
+  }
+  App.tvKey = function (name, extra) {
+    if (navigator.vibrate) navigator.vibrate(8);
+    return post('/api/home/tv/key', Object.assign({ name: name }, extra || {})).catch(function (e) { App.toast(App.esc(e.message), { tone: 'error', icon: 'film', ms: 2500 }); });
+  };
+  App.tvApps = function () {
+    App.sheet('<div class="sheet-pad"><div class="label">Apple TV</div><h2 class="serif sheet-h">Open an app</h2><div class="tv-apps"><span class="ls-note">Loading apps…</span></div></div>', {
+      cls: 'sheet--wide',
+      onMount: function (s, close) {
+        fetch('/api/home/tv/apps', { cache: 'no-store' }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error); return j; }); }).then(function (list) {
+          s.querySelector('.tv-apps').innerHTML = list.map(function (a) { return '<button class="chip" data-app="' + App.esc(a.id) + '">' + App.esc(a.name) + '</button>'; }).join('');
+        }).catch(function (e) { s.querySelector('.tv-apps').innerHTML = '<span class="ls-note">' + App.esc(e.message) + '</span>'; });
+        s.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-app]'); if (!b) return;
+          close(); App.toast('Opening <b>' + App.esc(b.textContent) + '</b>', { icon: 'film', ms: 2000 });
+          post('/api/home/tv/launch', { id: b.dataset.app }).catch(function (er) { App.toast(App.esc(er.message), { tone: 'error', icon: 'film' }); });
+        });
+      }
+    });
+  };
+
   // ------------------------------------------------------------ tiles
   function tile(d) {
     var pend = V.pending[d.id] ? '<i class="pend"></i>' : '';
     if (d.type === 'light') {
-      return '<div class="tile tile--light' + (d.on ? ' is-on' : '') + '" data-dev="' + d.id + '" style="--lvl:' + (d.on ? d.level : 0) + '%">' +
-        '<span class="tile-fill"></span>' + pend +
+      var gv = d.source === 'govee', tint = gv && d.on && d.color ? 'background:' + rgba(d.color, .5) : gv && d.on && d.kelvin ? 'background:' + rgba(kelvinHex(d.kelvin), .6) : '';
+      return '<div class="tile tile--light' + (d.on ? ' is-on' : '') + (d.online === false ? ' is-offline' : '') + '" data-dev="' + d.id + '" style="--lvl:' + (d.on ? d.level : 0) + '%">' +
+        '<span class="tile-fill"' + (tint ? ' style="' + tint + '"' : '') + '></span>' + pend +
+        (gv ? '<button class="tile-more" data-lightsheet="' + d.id + '" aria-label="Colour and scenes"><i style="background:' + (d.color || (d.kelvin ? kelvinHex(d.kelvin) : '#F3C77A')) + '"></i></button>' : '') +
         '<span class="tile-icon">' + App.icon('bulb', 28) + '</span>' +
         '<span class="tile-name">' + d.name + '</span>' +
         '<span class="tile-state num">' + (d.on ? d.level + '%' : 'Off') + '</span></div>';
@@ -164,6 +251,13 @@
     if (D.climate && D.climate.enabled) cl.innerHTML = climate();
     el.querySelector('.hc-cams').style.display = D.cameras.length ? '' : 'none';
     el.querySelector('.hc-media').innerHTML = media();
+    paintTv();
+  }
+  function paintTv() {
+    if (!V.el) return;
+    var box = V.el.querySelector('.hc-tv'), html = tvCard();
+    box.style.display = html ? '' : 'none';
+    box.innerHTML = html;
   }
 
   // ------------------------------------------------------------ tile gestures
@@ -205,6 +299,11 @@
   function bindTile(t) {
     (function () {
       var d = dev(t.dataset.dev);
+      var more = t.querySelector('.tile-more');
+      if (more) {
+        ['pointerdown', 'pointerup', 'pointermove'].forEach(function (ev) { more.addEventListener(ev, function (e) { e.stopPropagation(); }); });
+        more.addEventListener('click', function (e) { e.stopPropagation(); App.lightSheet(d.id); });
+      }
       if (d.type === 'light' || d.type === 'blind') sliderTile(t, d);
       if (d.type === 'lock') {
         App.hold(t, 1000, {
@@ -323,6 +422,9 @@
   function onClick(e) {
     var t;
     if ((t = e.target.closest('[data-scene]'))) return applyScene(t.dataset.scene);
+    if ((t = e.target.closest('[data-tv]'))) return App.tvKey(t.dataset.tv);
+    if (e.target.closest('[data-tv-power]')) { var T = D.tv || {}; return post('/api/home/tv/power', { on: T.power === 'off' }).catch(function (er) { App.toast(App.esc(er.message), { tone: 'error', icon: 'film' }); }); }
+    if (e.target.closest('[data-tv-apps]')) return App.tvApps();
     if ((t = e.target.closest('[data-sum]'))) {
       var k = t.dataset.sum;
       if (k === 'lights' || k === 'security') return listSheet(k);
@@ -351,6 +453,7 @@
   }
 
   App.on('live', function (keys) {
+    if (V.el && keys.indexOf('tv') > -1) paintTv();
     if (!V.el || keys.indexOf('music') < 0) return;
     paintPart('.hc-media', media()); paintPart('.hc-sum', summary());
   });
@@ -361,7 +464,7 @@
         V.el = el;
         el.innerHTML = '<div class="hc">' +
           '<div class="hc-left"><div class="hc-sum"></div><div class="hc-scenes"></div><div class="hc-rooms"></div></div>' +
-          '<div class="hc-right"><div class="hc-climate"></div><div class="hc-cams"></div><div class="hc-media card"></div></div>' +
+          '<div class="hc-right"><div class="hc-climate"></div><div class="hc-tv card"></div><div class="hc-cams"></div><div class="hc-media card"></div></div>' +
           '</div>';
         el.addEventListener('click', onClick);
       }

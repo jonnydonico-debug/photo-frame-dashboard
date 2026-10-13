@@ -11,7 +11,8 @@
       el.innerHTML = App.head('More') + '<div class="group menu">' +
         item('photos', 'photo', 'Photos', ps ? ps + ' photos' : 'Shared album') +
         item('games', 'star', 'Games', live ? 'Chess game in progress' : 'Chess') +
-        item('home', 'sliders', 'Home', (D.devices || []).length ? (on ? on + ' lights on' : 'Lights, locks, scenes') : 'Lights, locks, scenes') +
+        item('home', 'sliders', 'Home', (D.devices || []).length ? (on ? on + ' lights on' : 'Lights and scenes') : 'Lights, locks, scenes') +
+        (D.tv && D.tv.paired ? item('tv', 'tv', 'Apple TV', D.tv.connected ? (D.tv.power === 'off' ? 'Asleep' : 'Remote') : 'Not connected') : '') +
         item('settings', 'clock', 'Settings', 'Night mode, lock screen, you') + '</div>';
       if (!el.dataset.wired) {
         el.dataset.wired = '1';

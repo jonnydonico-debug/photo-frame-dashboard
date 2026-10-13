@@ -370,3 +370,33 @@ a { color: inherit; text-decoration: none; }
   .mu-tiles { grid-template-columns: repeat(3, 1fr); }
   .dvs { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* ---------- Govee light sheet */
+.lt-row { display: flex; align-items: center; gap: 12px; }
+.lt-row .btn { min-width: 64px; }
+.sw { display: flex; flex-wrap: wrap; gap: 10px; }
+.sw button, .sw-any { width: 44px; height: 44px; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .08); position: relative; overflow: hidden; }
+.sw button.is-on { box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--ink); }
+.sw-any { background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); }
+.sw-any input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; }
+.chip .wh { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .2); display: inline-block; }
+.sc-list { max-height: 34vh; overflow-y: auto; }
+.chip.is-on { background: var(--ink); color: var(--paper); }
+.dv[style*="--tint"].is-on { background: linear-gradient(135deg, var(--tint), #F3E3C2); }
+.dv.is-off { opacity: .5; }
+
+/* ---------- Apple TV remote */
+.tvp-pw { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--paper-2); color: var(--mute); }
+.tvp-pw.is-on { background: var(--sage); color: #fff; }
+.tvp-now { display: flex; flex-direction: column; }
+.tvp-now b { font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tvp-now small { color: var(--mute); }
+.tvp-touch { position: relative; width: 100%; aspect-ratio: 1 / .9; border-radius: 28px; background: linear-gradient(160deg, #2E2A24, #1C1915); color: rgba(255, 255, 255, .35); display: grid; place-items: center; font-size: 13px; margin: 4px 0 12px; touch-action: none; user-select: none; -webkit-user-select: none; box-shadow: var(--shadow); }
+.tvp-touch:active { background: linear-gradient(160deg, #36312A, #221E19); }
+.tvp-a { position: absolute; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; color: rgba(255, 255, 255, .7); }
+.tvp-a:active { background: rgba(255, 255, 255, .1); }
+.tvp-u { top: 8px; left: calc(50% - 26px); } .tvp-d { bottom: 8px; left: calc(50% - 26px); }
+.tvp-l { left: 8px; top: calc(50% - 26px); } .tvp-r { right: 8px; top: calc(50% - 26px); }
+.tvp-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px; }
+.tvp-row button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 0; border-radius: 18px; background: var(--card); box-shadow: var(--shadow); font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.tvp-row button:active { transform: scale(.96); }

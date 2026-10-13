@@ -11,6 +11,8 @@ import vm from 'node:vm';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createIntegrations } from './integrations.mjs';
+import { createGovee } from './govee.mjs';
+import { createAppleTV } from './appletv.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -37,11 +39,11 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 // Keys the wall display / any screen on the home network may change (day-to-day use).
 const OPEN_KEYS = ['display', 'notes', 'games', 'chores', 'stars', 'week', 'groceries', 'events', 'devices', 'climate'];
 // Keys only an admin (or the agent token) may change.
-const LIVE_KEYS = ['bart', 'music'];   // refreshed constantly by the server, not saved
+const LIVE_KEYS = ['bart', 'music', 'tv'];   // refreshed constantly by the server, not saved
 const ADMIN_KEYS = ['commute', 'bart', 'music', 'people', 'family', 'routines', 'stores', 'catOrder', 'catalog', 'usuals', 'rooms',
   'scenes', 'cameras', 'photos', 'agents', 'media', 'weather', 'settings'];
 const ALL_KEYS = OPEN_KEYS.concat(ADMIN_KEYS);
-const DEVICE_STATE_FIELDS = ['on', 'level', 'pos', 'locked', 'state'];
+const DEVICE_STATE_FIELDS = ['on', 'level', 'pos', 'locked', 'state', 'color', 'kelvin'];
 
 // ------------------------------------------------------------------ demo seed
 function demoState() {
@@ -227,6 +229,8 @@ function commit(patch, client) {
   return rev;
 }
 
+const GV = createGovee({ getState: () => state, commit: (p, c) => commit(p, c), secrets, saveSecrets: () => saveSecrets(), log });
+const TV = createAppleTV({ dataDir: DATA, here: HERE, commit: (p, c) => commit(p, c), secrets, saveSecrets: () => saveSecrets(), log });
 const X = createIntegrations({ getState: () => state, commit, secrets, saveSecrets: () => saveSecrets(), log, dataDir: DATA, photosDir: PHOTOS });
 
 // ------------------------------------------------------------------ HomeKit via Shortcuts
@@ -281,6 +285,7 @@ function fireDeviceShortcuts(oldList, newList) {
   const byId = Object.fromEntries((oldList || []).map(d => [d.id, d]));
   for (const d of newList || []) {
     const o = byId[d.id];
+    if (o && d.source === 'govee') { if (DEVICE_STATE_FIELDS.some(f => o[f] !== d[f])) GV.apply(d, o); continue; }
     if (!o || !d.shortcut) continue;
     if (!DEVICE_STATE_FIELDS.some(f => o[f] !== d[f])) continue;
     const input = deviceInput(d, o);
@@ -447,6 +452,17 @@ async function api(req, res, url) {
     return;
   }
 
+  // ---------------------------------------------------------------- lights + TV (home network or signed in)
+  if (p.startsWith('/api/home/')) {
+    if (!admin && !home) return send(res, 403, { error: 'Sign in to control the house from outside' });
+    try {
+      if (p === '/api/home/govee/scenes') return send(res, 200, await GV.scenes(url.searchParams.get('id') || ''));
+      if (p === '/api/home/govee/scene' && m === 'POST') { const b = await readBody(req); return send(res, 200, await GV.playScene(String(b.id || ''), String(b.name || ''))); }
+      if (p.startsWith('/api/home/tv')) return await TV.route(req, res, p, m, url, readBody, send);
+    } catch (e) { return send(res, e.status && e.status < 500 ? e.status : 409, { error: e.message }); }
+    return send(res, 404, { error: 'Not found' });
+  }
+
   // ---------------------------------------------------------------- map + music (home network or admin)
   if (p.startsWith('/api/geo/') || p.startsWith('/api/music')) {
     if (!admin && !home) return send(res, 403, { error: 'Sign in at /admin to use this from outside the house' });
@@ -575,6 +591,8 @@ async function api(req, res, url) {
         settings: state.settings, plex: { url: secrets.plex.url, hasToken: !!secrets.plex.token, status: plexStatus },
         icloud: { set: !!secrets.icloudAlbum, status: X.albumStatus() },
         tomtom: X.tomtomStatus(),
+        govee: GV.status(),
+        tv: TV.status(),
         spotify: { clientId: (secrets.spotify || {}).clientId || '', hasSecret: !!(secrets.spotify || {}).clientSecret, connected: !!(secrets.spotify || {}).refreshToken, status: X.spotifyStatus(), redirect: spotifyRedirect(req) },
         apiToken: secrets.apiToken, isMac: IS_MAC, hostname: os.hostname(), port: PORT,
         addresses: Object.values(os.networkInterfaces()).flat().filter(a => a && a.family === 'IPv4' && !a.internal).map(a => a.address),
@@ -590,6 +608,18 @@ async function api(req, res, url) {
       saveSecrets();
       if (b.settings) { commit({ settings: Object.assign({}, state.settings, b.settings) }, 'admin'); refreshWeather(); }
       return send(res, 200, { ok: true });
+    }
+    if (sub.startsWith('tv/')) {
+      try { return await TV.admin(sub.slice(3), req, res, readBody, send); }
+      catch (e) { return send(res, e.status && e.status < 500 ? e.status : 409, { error: e.message }); }
+    }
+    if (sub === 'govee' && m === 'POST') {
+      const b = await readBody(req);
+      try { return send(res, 200, await GV.setKey(b.clear ? '' : b.key)); }
+      catch (e) { return send(res, e.status === 403 ? 400 : 409, { error: e.message }); }
+    }
+    if (sub === 'govee/refresh' && m === 'POST') {
+      try { return send(res, 200, { ok: true, lights: await GV.discover() }); } catch (e) { return send(res, 409, { error: e.message }); }
     }
     if (sub === 'tomtom' && m === 'POST') {
       const b = await readBody(req);
@@ -826,5 +856,5 @@ server.listen(PORT, HOST, () => {
   log('  Dashboard:  http://' + os.hostname().replace(/\.local$/, '') + '.local:' + PORT + '/');
   addrs.forEach(a => log('              http://' + a + ':' + PORT + '/'));
   log('  Admin:      /admin');
-  refreshWeather(); refreshPlex(); X.start();
+  refreshWeather(); refreshPlex(); X.start(); GV.start(); TV.start();
 });

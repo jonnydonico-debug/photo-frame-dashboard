@@ -10,5 +10,6 @@ import './music.js';
 import './photos.js';
 import './games.js';
 import './home.js';
+import './tv.js';
 import './more.js';
 import './boot.js';

@@ -268,10 +268,46 @@ function photos() {
       <span class="row"><button class="btn btn--s" data-pfav="${i}">${p.fav ? '★ Favourite' : '☆ Favourite'}</button><button class="btn btn--s btn--danger" data-pdel="${esc(p.id || p.seed)}">Delete</button></span></figcaption></figure>`).join('')}</div>
   </section>`;
 }
+let tvUI = { scan: null, pair: null, busy: '' };
+function goveeBlock() {
+  const G = cfg.govee || { set: false, status: {} }, lights = (S.devices || []).filter(d => d.source === 'govee');
+  return `<section class="block"><div class="block-h"><h2 class="serif">Govee lights</h2><span class="muted">${G.set ? (G.status && G.status.ok === false ? 'problem' : lights.length + (lights.length === 1 ? ' light' : ' lights')) : 'off'}</span></div>
+      <p class="intro">Controls everything in your Govee Home app (on/off, brightness, colour, whites and Govee scenes), including lights that aren’t in Apple Home.</p>
+      ${G.set ? '' : `<ol class="steps"><li>Open the <b>Govee Home</b> app → <b>Profile</b> → ⚙️ <b>Settings</b> → <b>Apply for API Key</b>.</li><li>Govee emails you the key. Paste it below and tap Save. Your lights appear on the frame and phones straight away.</li></ol>`}
+      ${G.status && G.status.ok === false ? `<p class="warn">${esc(G.status.error || 'Govee didn’t answer')}</p>` : ''}
+      ${lights.length ? '<ul class="status">' + lights.map(d => `<li><b>${esc(d.name)}</b> ${d.online === false ? 'offline' : d.on ? 'on · ' + (d.level || 100) + '%' : 'off'}</li>`).join('') + '</ul>' : ''}
+      <div class="row"><input id="gv-key" type="password" autocomplete="off" placeholder="${G.set ? '•••••••• (saved)' : 'Govee API key'}"><button class="btn btn--solid" data-gvsave>Save</button></div>
+      ${G.set ? '<div class="row wrap" style="margin-top:8px"><button class="btn btn--s" data-gvfind>Look for new lights</button><button class="btn btn--s" data-gvoff>Remove key</button></div>' : ''}
+      ${G.set ? '<p class="intro small">Rename a light or move it to another room in Devices below.</p>' : ''}
+    </section>`;
+}
+function tvBlock() {
+  const T = cfg.tv || { setup: { state: 'missing' } }, live = S.tv || {}, st = T.setup || {};
+  let body = '';
+  if (st.state === 'missing') body = `<p class="intro">The Mac mini can work your Apple TV like the Siri remote: wake and sleep it, arrows and select, play/pause, volume, open apps, and show what’s playing.</p>
+      <p class="intro small">Setup downloads a private copy of Python and the open-source <a href="https://pyatv.dev" target="_blank" rel="noopener">pyatv</a> remote (about 60 MB) into ~/HomeHQ/data. Nothing else on the Mac changes.</p>
+      <button class="btn btn--solid" data-tvinstall>Set up Apple TV control</button>`;
+  else if (st.state === 'installing') body = `<p class="intro"><b>Setting up…</b> ${esc(st.step || '')}</p><p class="intro small">This takes a minute or two. You can leave this page.</p>`;
+  else if (st.state === 'error') body = `<p class="warn">${esc(st.error || 'Setup failed')}</p><button class="btn btn--solid" data-tvinstall>Try again</button>`;
+  else if (!T.paired) {
+    const P = tvUI.pair;
+    if (P && P.needsPin) body = `<p class="intro"><b>Step ${P.protocol === 'AirPlay' ? '2' : '1'} of 2.</b> A code is showing on your TV. Type it here:</p>
+      <div class="row"><input id="tv-pin" inputmode="numeric" maxlength="8" placeholder="Code on the TV" autocomplete="one-time-code"><button class="btn btn--solid" data-tvpin>Pair</button></div>
+      <button class="btn btn--ghost" data-tvcancel>Cancel</button>`;
+    else body = `<p class="intro">Make sure the Apple TV is on, then find it on your Wi-Fi. Pairing asks for two short codes shown on the TV (one for the remote, one for what’s playing).</p>
+      <button class="btn btn--solid" data-tvscan ${tvUI.busy ? 'disabled' : ''}>${tvUI.busy === 'scan' ? 'Looking…' : 'Find Apple TVs'}</button>
+      ${tvUI.scan ? (tvUI.scan.length ? '<div class="items">' + tvUI.scan.map(x => `<div class="item"><div class="item-h"><span class="item-sum"><b>${esc(x.name)}</b><small>${esc(x.model || 'Apple TV')} · ${esc(x.address)}</small></span><button class="btn btn--s btn--solid" data-tvpair="${esc(x.id)}" data-name="${esc(x.name)}">Pair</button></div></div>`).join('') + '</div>'
+        : '<p class="warn">No Apple TV found. Check it’s on and on the same Wi-Fi as the Mac mini.</p>') : ''}`;
+  } else body = `<ul class="status"><li><b>${esc(T.name || 'Apple TV')}</b> ${live.connected ? 'connected' + (live.power ? ' · ' + (live.power === 'on' ? 'awake' : 'asleep') : '') : esc(live.error || 'connecting…')}</li>
+      ${live.app ? `<li><b>App</b> ${esc(live.app.name || '')}</li>` : ''}${live.playing && live.playing.title ? `<li><b>Playing</b> ${esc(live.playing.title)}${live.playing.artist ? ' · ' + esc(live.playing.artist) : ''}</li>` : ''}</ul>
+      <div class="row wrap"><button class="btn btn--s" data-tvreconnect>Reconnect</button><button class="btn btn--s btn--danger" data-tvforget>Unpair</button></div>`;
+  return `<section class="block"><div class="block-h"><h2 class="serif">Apple TV</h2><span class="muted">${T.paired ? (live.connected ? 'on' : 'offline') : st.state === 'ready' ? 'not paired' : 'off'}</span></div>${body}</section>`;
+}
 function home() {
   const linked = (S.devices || []).filter(d => d.shortcut).length;
   const C = S.climate || {};
-  return `<section class="block guide">
+  if (cfg.tv && cfg.tv.setup && cfg.tv.setup.state === 'installing') setTimeout(async () => { if (section !== 'home') return; cfg = await call('/api/admin/config'); rerenderSoon(); }, 3000);
+  return goveeBlock() + tvBlock() + `<section class="block guide">
       <div class="block-h"><h2 class="serif">How HomeKit control works</h2><span class="muted">${linked}/${(S.devices || []).length} linked</span></div>
       <ol>
         <li>On the Mac mini, open <b>Shortcuts</b> and make one shortcut per light (e.g. “Kitchen Pendants”). Its first action receives <b>Text</b> input.</li>
@@ -519,6 +555,43 @@ document.addEventListener('click', async e => {
       await call('/api/admin/config', { method: 'POST', body: { settings: { lat: r.lat, lon: r.lon, place: r.name.split(',')[0] } } });
       await call('/api/admin/weather/refresh', { method: 'POST' }); flash('Weather set'); return reload();
     }
+    if (d.gvsave != null) {
+      const key = $('#gv-key').value.trim(); if (!key) return flash('Paste your Govee key first', true);
+      flash('Checking with Govee…');
+      try { const r = await call('/api/admin/govee', { method: 'POST', body: { key } }); flash(r.lights ? 'Found ' + r.lights + (r.lights === 1 ? ' light' : ' lights') : 'Key saved · no lights found yet'); }
+      catch (e2) { flash(e2.message, true); }
+      cfg = await call('/api/admin/config'); return reload();
+    }
+    if (d.gvfind != null) { try { const r = await call('/api/admin/govee/refresh', { method: 'POST' }); flash(r.lights + ' Govee lights'); } catch (e2) { flash(e2.message, true); } return reload(); }
+    if (d.gvoff != null) { if (!confirm('Remove the Govee key? Govee lights disappear from the dashboard.')) return; await call('/api/admin/govee', { method: 'POST', body: { clear: true } }); flash('Govee removed'); return reload(); }
+    if (d.tvinstall != null) { await call('/api/admin/tv/install', { method: 'POST' }); cfg = await call('/api/admin/config'); return render(); }
+    if (d.tvscan != null) {
+      tvUI.busy = 'scan'; render();
+      try { tvUI.scan = (await call('/api/admin/tv/scan', { method: 'POST' })).filter(x => (x.services || []).some(v => v.protocol === 'Companion')); } catch (e2) { flash(e2.message, true); tvUI.scan = null; }
+      tvUI.busy = ''; return render();
+    }
+    if (d.tvpair) {
+      tvUI.target = { id: d.tvpair, name: d.name };
+      flash('Look at the TV…');
+      try {
+        const r = await call('/api/admin/tv/pair', { method: 'POST', body: tvUI.target });
+        if (r.done) { tvUI = { scan: null, pair: null, busy: '' }; flash('Apple TV paired'); cfg = await call('/api/admin/config'); return render(); }
+        tvUI.pair = r; render(); setTimeout(() => { const i = $('#tv-pin'); if (i) i.focus(); }, 50); return;
+      } catch (e2) { flash(e2.message, true); return; }
+    }
+    if (d.tvpin != null) {
+      const pin = $('#tv-pin').value.trim(); if (!pin) return flash('Type the code from the TV', true);
+      try {
+        await call('/api/admin/tv/pin', { method: 'POST', body: { pin } });
+        // Next protocol (AirPlay) needs its own code; the server says when everything is done.
+        const r = await call('/api/admin/tv/pair', { method: 'POST', body: tvUI.target });
+        if (r.done) { tvUI = { scan: null, pair: null, busy: '' }; flash('Apple TV paired'); cfg = await call('/api/admin/config'); return render(); }
+        tvUI.pair = r; flash('Done · now one more code'); render(); setTimeout(() => { const i = $('#tv-pin'); if (i) i.focus(); }, 50); return;
+      } catch (e2) { flash(e2.message, true); return; }
+    }
+    if (d.tvcancel != null) { await call('/api/admin/tv/cancel', { method: 'POST' }).catch(() => {}); tvUI.pair = null; return render(); }
+    if (d.tvreconnect != null) { await call('/api/admin/tv/reconnect', { method: 'POST' }); return flash('Reconnecting…'); }
+    if (d.tvforget != null) { if (!confirm('Unpair the Apple TV?')) return; await call('/api/admin/tv/forget', { method: 'POST' }); cfg = await call('/api/admin/config'); return render(); }
     if (d.ttsave != null) {
       const key = $('#tt-key').value.trim(); if (!key) return flash('Paste your TomTom key first', true);
       flash('Checking the key…');
