@@ -18,6 +18,9 @@
   // ------------------------------------------------------------ text + time
   App.esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
   App.now = function () { return new Date(); };
+  App.dayStart = function (d) { var x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+  App.addDays = function (d, n) { var x = new Date(d); x.setDate(x.getDate() + n); return x; };
+  App.greeting = function (n) { var h = n.getHours(); return h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : h < 22 ? 'Good evening' : 'Good night'; };
   var DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   App.fmt = {
@@ -34,6 +37,8 @@
       var h = Math.round(m / 60); if (h < 24) return h + ' hr ago';
       var d = new Date(t); return App.fmt.dayShort(d) + ', ' + App.fmt.monthShort(d) + ' ' + d.getDate();
     },
+    // "Today", "Tomorrow", else the weekday
+    rel: function (d) { var diff = Math.round((App.dayStart(d) - App.dayStart(new Date())) / 864e5); return diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : diff === -1 ? 'Yesterday' : DAYS[d.getDay()]; },
     hhmm: function (hhmm) { var p = String(hhmm).split(':'); return App.fmt.time(new Date(2000, 0, 1, +p[0] || 0, +p[1] || 0)); }
   };
 
@@ -44,8 +49,12 @@
   };
   var FALLBACK = [{ id: 'jd', name: 'JD', color: '#6E8069', rgb: '110 128 105', ink: '#FFFFFF' }, { id: 'georgia', name: 'Georgia', color: '#A8644A', rgb: '168 100 74', ink: '#FFFFFF' }];
   App.people = function () { return D.people && D.people.length ? D.people : FALLBACK; };
-  App.person = function (id) { var ps = App.people(); for (var i = 0; i < ps.length; i++) if (ps[i].id === id) return ps[i]; return { id: id || '?', name: '?', color: '#8A8276', rgb: '138 130 118', ink: '#fff' }; };
-  App.pstyle = function (p) { if (typeof p === 'string') p = App.person(p); return '--c:' + p.color + ';--c-rgb:' + p.rgb + ';--c-ink:' + (p.ink || '#fff'); };
+  App.person = function (id) { if ((id === 'family' || id === 'any') && D.family) return D.family; var ps = App.people(); for (var i = 0; i < ps.length; i++) if (ps[i].id === id) return ps[i]; return { id: id || '?', name: '?', color: '#8A8276', rgb: '138 130 118', ink: '#fff' }; };
+  App.pstyle = function (p) {
+    if (typeof p === 'string') p = App.person(p);
+    // Near-black colours (the "Family" default) would vanish on the dark theme: use the gold accent.
+    if (/^#(1[0-9a-f]){3}$/i.test(p.color || '')) p = { color: '#CDB66A', rgb: '205 182 106', ink: '#17150F' };
+    return '--c:' + p.color + ';--c-rgb:' + p.rgb + ';--c-ink:' + (p.ink || '#fff'); };
   App.avatar = function (p, size) {
     if (typeof p === 'string') p = App.person(p);
     size = size || 36;

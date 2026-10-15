@@ -1,4 +1,5 @@
-// More: Photos, Games, Home controls and Settings (the frame's night mode + lock, who you are).
+// More: everything else the frame has — Calendar, Chores, Recipes, Map, Photos, Games, Home
+// controls, Apple TV, Agents, Costs — and Settings (the frame's night mode + lock, who you are).
 (function () {
   'use strict';
   var D = window.DATA;
@@ -8,11 +9,24 @@
       var ps = (D.photos || []).filter(function (p) { return p.src; }).length;
       var live = D.games && D.games.chess && D.games.chess.current && !D.games.chess.current.over;
       var on = (D.devices || []).filter(function (d) { return d.type === 'light' && d.on; }).length;
-      el.innerHTML = App.head('More') + '<div class="group menu">' +
+      var t0 = new Date(); t0.setHours(0, 0, 0, 0);
+      var evs = (D.events || []).filter(function (e) { return e.end > t0 && e.start < +t0 + 7 * 864e5; }).length;
+      var chores = (D.chores || []).filter(function (c) { return !c.done; }).length;
+      var C = D.costs;
+      el.innerHTML = App.head('More') + '<div class="sec-l">Plans</div><div class="group menu">' +
+        item('calendar', 'calendar', 'Calendar', evs ? evs + ' this week' : 'Nothing this week') +
+        item('chores', 'tasks', 'Chores', chores ? chores + ' left to do' : 'All done') +
+        item('recipes', 'utensils', 'Recipes', (D.recipes || []).length ? D.recipes.length + ' saved' : 'Text Dommy a recipe to save it') +
+        item('map', 'map', 'Map', 'Drive and walk times from home') + '</div>' +
+        '<div class="sec-l">House</div><div class="group menu">' +
         item('photos', 'photo', 'Photos', ps ? ps + ' photos' : 'Shared album') +
         item('games', 'star', 'Games', live ? 'Chess game in progress' : 'Chess') +
         item('home', 'sliders', 'Home', (D.devices || []).length ? (on ? on + ' lights on' : 'Lights and scenes') : 'Lights, locks, scenes') +
         (D.tv && D.tv.paired ? item('tv', 'tv', 'Apple TV', D.tv.connected ? (D.tv.power === 'off' ? 'Asleep' : 'Remote') : 'Not connected') : '') +
+        '</div><div class="sec-l">Agents</div><div class="group menu">' +
+        item('agents', 'robot', 'Agents', 'Your Claude team and what they did') +
+        item('costs', 'coin', 'Costs', C && C.month ? money(C.month.cost) + ' on the Claude API this month' : 'Claude API spending') +
+        '</div><div class="sec-l"></div><div class="group menu">' +
         item('settings', 'clock', 'Settings', 'Night mode, lock screen, you') + '</div>';
       if (!el.dataset.wired) {
         el.dataset.wired = '1';
@@ -20,6 +34,7 @@
       }
     }
   });
+  function money(v) { return !v ? '$0' : v < 0.995 ? Math.round(v * 100) + '¢' : '$' + v.toFixed(2); }
   function item(go, icon, title, sub) {
     return '<button class="menu-i" data-go="' + go + '"><span class="menu-ico">' + App.icon(icon, 20) + '</span><span><b>' + title + '</b><small>' + App.esc(sub) + '</small></span>' + App.icon('right', 18) + '</button>';
   }

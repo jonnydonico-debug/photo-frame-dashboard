@@ -1,6 +1,6 @@
 # Home HQ (Mac mini)
 
-This folder runs the Steinnheimer & Armada family dashboard for JD and Georgia: a wall frame,
+This folder runs the Steinheimer & Armada family dashboard for JD and Georgia: a wall frame,
 a phone app, an admin page, and a team of Claude agents that answer iMessage.
 
 @data/agents/CONTEXT.md
@@ -23,11 +23,13 @@ a phone app, an admin page, and a team of Claude agents that answer iMessage.
 
 ## How things fit
 - One JSON state object, live-synced to every screen over SSE (`/api/events`); screens PATCH
-  `/api/state` with only the keys they changed. Server-only live keys: `bart`, `music`, `tv`.
+  `/api/state` with only the keys they changed. Server-only live keys: `bart`, `music`, `tv`, `costs`, `reminders`.
+- Recipes: `recipes` state key; agent tools in `app/server/recipes.mjs`; photos in `data/recipes/`.
 - New state keys must be added to `KEYS` in `app/js/sync.js` and the key lists at the top of
   `server.mjs` (OPEN_KEYS = writable from home screens, ADMIN_KEYS = admin only).
-- Look: earth tones, Apple-like (`app/css/theme.css`, `app/css/app.css`). Night mode is an SVG
-  colour filter on the frame.
+- Look: always dark — charcoal tiles on near-black, olive-gold and terracotta accents, serif
+  headings (`app/css/theme.css` for the frame, `app/css/app.css` for the phone). Night mode is an
+  SVG filter on the frame that turns everything red (it keeps lightness; no inversion).
 
 ## Working rules
 - Check JavaScript before finishing: `node/bin/node --check <file>`.
@@ -37,11 +39,14 @@ a phone app, an admin page, and a team of Claude agents that answer iMessage.
   copied in from there, so unlogged edits here can be overwritten.
 - If the server doesn't come back after an edit, read the end of `logs/server.log`.
 
-## Confirm before changing anything
-JD often drives this session from his phone (Remote Control), in short messages. Before editing
-any file, every time:
-1. Restate the request in plain words: what will change, which screen(s) (frame, admin, phone
-   app), and what it will look like or do when it's done.
-2. Ask about anything ambiguous (which tab, wording, colours, who sees it) instead of guessing.
-3. List the files you plan to touch, then wait for a clear "yes" before making changes.
-If the request changes during the conversation, confirm again before continuing.
+## When to ask first
+JD often drives this session from his phone (Remote Control), in short messages, and wants things
+done without a confirmation round for every edit.
+- **Clear, small requests:** just do them, then say briefly what changed and which screen(s)
+  (frame, admin, phone app) it affects.
+- **Ask first** (restate the plan, list the files, wait for a "yes") when:
+  - the request is ambiguous (which tab, wording, colours, who sees it): ask instead of guessing;
+  - it's a big change (a new feature, a redesign, many files);
+  - it's risky: deleting or rewriting household data in `data/`, changing agent behaviour or what
+    the iMessage agent can do, or anything with an effect outside this Mac (texting people,
+    pushing to GitHub, controlling devices in the house beyond a quick read-only check).

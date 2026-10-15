@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=1280, initial-scale=1, user-scalable=no">
-  <meta name="theme-color" content="#F2EEE6">
+  <meta name="theme-color" content="#0B0B0A">
   <title>Home HQ</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon-192.png">
@@ -23,6 +23,7 @@
   <link rel="stylesheet" href="css/views/music.css">
   <link rel="stylesheet" href="css/views/map.css">
   <link rel="stylesheet" href="css/views/notes.css">
+  <link rel="stylesheet" href="css/views/recipes.css">
   <link rel="stylesheet" href="css/views/games.css">
   <link rel="stylesheet" href="css/views/settings.css">
   <link rel="stylesheet" href="css/views/costs.css">
@@ -45,6 +46,7 @@
       <button class="rail-item" data-go="shopping"><svg class="i" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2.2l2.3 11h10.8L21 8H6.5"/><circle cx="10" cy="19.5" r="1.5"/><circle cx="17" cy="19.5" r="1.5"/></svg><span>Shopping</span></button>
       <button class="rail-item" data-go="reminders"><svg class="i" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span>Reminders</span></button>
       <button class="rail-item" data-go="notes"><svg class="i" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5z"/><path d="M15 3v4h4M8 12h8M8 16h5"/></svg><span>Notes</span></button>
+      <button class="rail-item" data-go="recipes"><svg class="i" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v8M4.5 3v5a2.5 2.5 0 0 0 5 0V3M7 11v10M17 21V3c-2.5 1.5-3.5 4-3.5 8h3.5"/></svg><span>Recipes</span></button>
       <button class="rail-item" data-go="music"><svg class="i" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg><span>Music</span></button>
       <button class="rail-item" data-go="photos"><svg class="i" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/></svg><span>Photos</span></button>
       <button class="rail-item" data-go="map"><svg class="i" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/></svg><span>Map</span></button>
@@ -66,6 +68,7 @@
       <section class="view view--bleed" id="view-map" data-view="map"></section>
       <section class="view" id="view-reminders" data-view="reminders"></section>
       <section class="view" id="view-notes" data-view="notes"></section>
+      <section class="view" id="view-recipes" data-view="recipes"></section>
       <section class="view" id="view-games" data-view="games"></section>
       <section class="view" id="view-control" data-view="control"></section>
       <section class="view" id="view-agents" data-view="agents"></section>

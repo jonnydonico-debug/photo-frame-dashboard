@@ -12,6 +12,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { createHouseTools, callClaude, MODELS } from './assistant.mjs';
 
+const RECIPE_TOOLS = ['recipe_add', 'recipe_list', 'recipe_get', 'recipe_update', 'recipe_remove', 'recipe_to_shopping'];
 const HOUSE_TOOLS = ['home_summary', 'shopping_list', 'shopping_add', 'shopping_set_store', 'shopping_check_off', 'shopping_remove', 'notes_list', 'note_add', 'note_done',
   'lights', 'light_set', 'light_scene', 'music', 'apple_tv', 'frame_message'];
 
@@ -20,7 +21,7 @@ export const DEFAULT_AGENTS = [
     id: 'home', name: 'Home', icon: '🏠', parent: null, model: 'claude-sonnet-5-5', enabled: true, builtin: true, channels: ['imessage'],
     role: 'Front desk. Answers texts from JD and Georgia and runs the house.',
     instructions: 'Handle everyday requests yourself with your tools. Hand work to a teammate when it fits them better, for example Plex for anything about the movie library. Save lasting preferences and facts with remember.',
-    tools: HOUSE_TOOLS.concat(['calendar', 'todo_list', 'todo_add', 'todo_done', 'todo_remove', 'api_costs', 'web_search', 'schedule_add', 'schedule_list', 'schedule_cancel']), can: ['plex']
+    tools: HOUSE_TOOLS.concat(['calendar', 'todo_list', 'todo_add', 'todo_done', 'todo_remove', 'api_costs', 'web_search', 'schedule_add', 'schedule_list', 'schedule_cancel']).concat(RECIPE_TOOLS), can: ['plex']
   },
   {
     id: 'plex', name: 'Plex', icon: '🎬', parent: 'home', model: 'claude-haiku-5-5', enabled: false /* off until JD switches it on */, builtin: true, channels: [],
@@ -49,8 +50,8 @@ export function createAgents(ctx) {
   if (!schedules) schedules = [{ id: 'morning-brief', title: 'Morning brief', agent: 'home', kind: 'task', enabled: false, deliver: 'jd', when: { type: 'weekly', time: '07:30', days: [1, 2, 3, 4, 5] },
     prompt: 'Send a short good-morning brief: today\'s weather, today\'s calendar, the next BART trains, and anything on the shopping list. Keep it to a few lines.', lastRun: 0 }];
   // Tools added in later versions are switched on for the Home agent of existing installs too
-  // (v2 web search + schedules, v3 API costs, v4 to-dos, v5 calendar, v6 shopping stores). Oldest first.
-  const V0 = settings.v || 0, LATEST = 6;
+  // (v2 web search + schedules, v3 API costs, v4 to-dos, v5 calendar, v6 shopping stores, v7 recipes). Oldest first.
+  const V0 = settings.v || 0, LATEST = 7;
   if (V0 < LATEST) {
     const h = agents.find(a => a.id === 'home');
     const add = list => { if (h) for (const t of list) if (!(h.tools || []).includes(t)) h.tools = (h.tools || []).concat([t]); };
@@ -59,6 +60,7 @@ export function createAgents(ctx) {
     if (V0 < 4) add(['todo_list', 'todo_add', 'todo_done', 'todo_remove']);
     if (V0 < 5) add(['calendar']);
     if (V0 < 6) add(['shopping_set_store']);
+    if (V0 < 7) add(RECIPE_TOOLS);
     settings.v = LATEST;
     setTimeout(() => { saveAgents(); saveSettings(); saveSchedules(); }, 0);
   }
@@ -243,13 +245,18 @@ ${recent || '(none yet)'}`;
 
   // ---------------------------------------------------------------- run an agent
   function publish(r) { broadcast({ type: 'agent-run', run: r }); }
+  const recentImages = {};
   async function run(agentId, { text, images, who, channel, parentRun, depth, convo, deliverTo }) {
     const agent = get(agentId);
     if (!agent) throw Object.assign(new Error('No agent ' + agentId), { status: 404 });
     if (!agent.enabled) throw Object.assign(new Error(agent.name + ' is switched off'), { status: 409 });
     const r = { id: id('r'), agent: agent.id, parent: parentRun || null, channel: channel || 'admin', who: who || null, input: (text || '') + (images && images.length ? ' [' + images.length + ' photo]' : ''), steps: [], output: '', status: 'running', at: Date.now() };
     runs.unshift(r); runs = runs.slice(0, 400); publish(r);
-    const c = { agent, who, channel: r.channel, runId: r.id, depth: depth || 0, deliverTo };
+    // Photos sent with this message, or (for "save that recipe" after a photo) the last ones sent in
+    // this conversation in the past 30 minutes, so tools like recipe_add can keep them
+    if (images && images.length && convo) recentImages[convo] = { images: images.slice(0, 4), at: Date.now() };
+    const recent = convo && recentImages[convo] && Date.now() - recentImages[convo].at < 30 * 60000 ? recentImages[convo].images : [];
+    const c = { agent, who, channel: r.channel, runId: r.id, depth: depth || 0, deliverTo, images: images && images.length ? images : recent };
     const past = convo ? (history[convo] || []).slice(-16) : [];
     const content = [];
     for (const im of (images || []).slice(0, 4)) content.push({ type: 'image', source: { type: 'base64', media_type: im.media_type, data: im.data } });
@@ -261,7 +268,7 @@ ${recent || '(none yet)'}`;
     let carry = '';
     try {
       for (let round = 0; round < 10; round++) {
-        const j = await callClaude(secrets, { model: agent.model || MODELS[0][0], max_tokens: 1500, system: sys, tools, messages }, { agent: agent.id, channel: c.channel });
+        const j = await callClaude(secrets, { model: agent.model || MODELS[0][0], max_tokens: 4000, system: sys, tools, messages }, { agent: agent.id, channel: c.channel });
         messages.push({ role: 'assistant', content: j.content });
         // Web searches Claude ran on its side show up as steps in the activity log
         for (const b of j.content || []) {

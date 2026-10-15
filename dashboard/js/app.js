@@ -51,13 +51,13 @@
     var stage = $('#stage');
     if (!stage) return;
     var on = App.isNight(), k = App.LEVELS[App.displayCfg().night.level] || App.LEVELS.medium;
-    // Lightness is inverted (paper -> black, ink -> bright) and every colour collapses onto the red channel.
+    // The theme is already dark, so lightness is kept and every colour collapses onto the red channel.
     var fm = document.getElementById('redshiftMatrix');
-    if (fm) fm.setAttribute('values', [-.2126 * k, -.7152 * k, -.0722 * k, 0, k, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0].map(function (x) { return +x.toFixed(4); }).join(' '));
+    if (fm) fm.setAttribute('values', [.2126 * k, .7152 * k, .0722 * k, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0].map(function (x) { return +x.toFixed(4); }).join(' '));
     stage.style.setProperty('--night-k', k);
     if (on !== stage.classList.contains('is-red')) {
       stage.classList.toggle('is-red', on);
-      document.querySelector('meta[name=theme-color]').setAttribute('content', on ? '#000000' : '#F3EFE8');
+      document.querySelector('meta[name=theme-color]').setAttribute('content', on ? '#000000' : '#0B0B0A');
       App.emit('night', on);
     }
   }
@@ -123,6 +123,8 @@
   };
   App.pstyle = function (p) {
     if (typeof p === 'string') p = App.person(p);
+    // Near-black colours (the "Family" default) would vanish on the dark theme: use the gold accent.
+    if (/^#(1[0-9a-f]){3}$/i.test(p.color || '')) p = { color: '#CDB66A', rgb: '205 182 106', ink: '#17150F' };
     return '--c:' + p.color + ';--c-rgb:' + p.rgb + ';--c-ink:' + p.ink;
   };
   App.avatar = function (p, size, cls) {

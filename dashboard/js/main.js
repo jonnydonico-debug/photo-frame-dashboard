@@ -15,6 +15,7 @@ import './views/music.js';
 import './views/map.js';
 import './views/reminders.js';
 import './views/notes.js';
+import './views/recipes.js';
 import './views/games.js';
 import './views/control.js';
 import './views/agents.js';

@@ -13,7 +13,8 @@ import { fileURLToPath } from 'node:url';
 import { createIntegrations } from './integrations.mjs';
 import { createGovee } from './govee.mjs';
 import { createAppleTV } from './appletv.mjs';
-import { MODELS, testKey, claudeUsage, setUsageSink } from './assistant.mjs';
+import { MODELS, testKey, claudeUsage, setUsageSink, createHouseTools } from './assistant.mjs';
+import { createRecipes } from './recipes.mjs';
 import { createCosts } from './costs.mjs';
 import { createCalendars } from './calendars.mjs';
 import { resolveStore } from './stores.mjs';
@@ -44,7 +45,7 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 // ------------------------------------------------------------------ state keys
 // Keys the wall display / any screen on the home network may change (day-to-day use).
-const OPEN_KEYS = ['display', 'notes', 'games', 'chores', 'stars', 'week', 'groceries', 'events', 'devices', 'climate', 'todos'];
+const OPEN_KEYS = ['display', 'notes', 'games', 'chores', 'stars', 'week', 'groceries', 'events', 'devices', 'climate', 'todos', 'recipes'];
 // Keys only an admin (or the agent token) may change.
 const LIVE_KEYS = ['bart', 'music', 'tv', 'costs', 'reminders'];   // refreshed constantly by the server, not saved
 const ADMIN_KEYS = ['commute', 'bart', 'music', 'people', 'family', 'routines', 'stores', 'catOrder', 'catalog', 'usuals', 'rooms',
@@ -65,7 +66,7 @@ function demoState() {
   return out;
 }
 function defaultSettings() {
-  return { title: 'Steinnheimer & Armada Home', units: 'fahrenheit', place: '', address: '', lat: null, lon: null, demo: true, hiddenViews: [], schema: 4 };
+  return { title: 'Steinheimer & Armada Home', units: 'fahrenheit', place: '', address: '', lat: null, lon: null, demo: true, hiddenViews: [], schema: 4 };
 }
 const HOUSEHOLD = [
   { id: 'jd', name: 'JD', color: '#6E8069', rgb: '110 128 105', ink: '#FFFFFF', home: true, status: 'Home' },
@@ -75,7 +76,7 @@ function blankState() {
   // Everything empty except generic helpers (routines, aisle order, the grocery catalogue).
   const s = demoState();
   Object.assign(s, {
-    people: HOUSEHOLD.map(p => Object.assign({}, p)), notes: [], games: {}, todos: [], events: [], chores: [], groceries: [], photos: [], stars: {}, week: {}, agents: [],
+    people: HOUSEHOLD.map(p => Object.assign({}, p)), notes: [], games: {}, todos: [], recipes: [], events: [], chores: [], groceries: [], photos: [], stars: {}, week: {}, agents: [],
     rooms: [], devices: [], scenes: [], cameras: [],
     stores: [{ id: 'store', name: 'Groceries' }],
     climate: { enabled: false, current: 20, set: 20, mode: 'off', humidity: 0, outside: null },
@@ -114,7 +115,7 @@ if (savedSchema < 3) {
   // v3: the household is JD and Georgia; notes and games.
   if (!(state.people || []).some(p => p.id === 'jd' || p.id === 'georgia')) state.people = HOUSEHOLD.map(p => Object.assign({}, p));
   state.notes = state.notes || []; state.games = state.games || {};
-  if (!state.settings.title || state.settings.title === 'Home HQ') state.settings.title = 'Steinnheimer & Armada Home';
+  if (!state.settings.title || state.settings.title === 'Home HQ') state.settings.title = 'Steinheimer & Armada Home';
   state.settings.schema = 3;
   log('Updated saved data to schema 3 (JD + Georgia, notes, games)');
   saveSoon();
@@ -147,6 +148,21 @@ if (state.settings.schema < 6) {
   state.groceries = (state.groceries || []).map(g => state.stores.some(x => x.id === g.store) ? g : Object.assign({}, g, { store: '' }));
   state.settings.schema = 6;
   log('Updated saved data to schema 6 (optional store per shopping item)');
+  saveSoon();
+}
+if (state.settings.schema < 7) {
+  // v7: Recipes tab (saved by texting the agent a recipe or a photo of one)
+  state.recipes = state.recipes || [];
+  state.settings.hiddenViews = (state.settings.hiddenViews || []).filter(v => v !== 'recipes');
+  state.settings.schema = 7;
+  log('Updated saved data to schema 7 (recipes)');
+  saveSoon();
+}
+if (state.settings.schema < 8) {
+  // v8: family name spelling (Steinheimer)
+  if (state.settings.title) state.settings.title = state.settings.title.replace(/Steinnheimer/g, 'Steinheimer');
+  state.settings.schema = 8;
+  log('Updated saved data to schema 8 (Steinheimer spelling)');
   saveSoon();
 }
 
@@ -260,16 +276,22 @@ const TV = createAppleTV({ dataDir: DATA, here: HERE, commit: (p, c) => commit(p
 const X = createIntegrations({ getState: () => state, commit, secrets, saveSecrets: () => saveSecrets(), log, dataDir: DATA, photosDir: PHOTOS });
 // Agents (iMessage front desk, Plex, and any you create in Admin → Agents)
 let PLX = null;
+const HOUSE_CTX = {
+  getState: () => state, commit: (p, c) => commit(p, c),
+  devices: { apply: (a, b) => fireDeviceShortcuts(a, b) },
+  spotify: { search: q => X.spotifySearch(q), command: b => X.spotifyCommand(b) },
+  tv: { cmd: (c, a, t) => TV.cmd(c, a, t) }, govee: GV,
+  announce: text => broadcast({ type: 'announce', text, icon: 'bell' })
+};
+// Recipes (state.recipes + photos in data/recipes); ingredients go on the list through the same
+// shopping_add the agent uses, so names, stores and duplicates are handled the same way.
+const HOUSE = createHouseTools(HOUSE_CTX);
+const RCP = createRecipes({ dataDir: DATA, getState: () => state, commit: (p, c) => commit(p, c), log,
+  shoppingAdd: (items, who) => HOUSE.run('shopping_add', { items }, who) });
 const AG = createAgents({
   dataDir: DATA, secrets, log, broadcast, getState: () => state,
-  house: {
-    getState: () => state, commit: (p, c) => commit(p, c),
-    devices: { apply: (a, b) => fireDeviceShortcuts(a, b) },
-    spotify: { search: q => X.spotifySearch(q), command: b => X.spotifyCommand(b) },
-    tv: { cmd: (c, a, t) => TV.cmd(c, a, t) }, govee: GV,
-    announce: text => broadcast({ type: 'announce', text, icon: 'bell' })
-  },
-  extraTools: () => [PLX],
+  house: HOUSE_CTX,
+  extraTools: () => [PLX, RCP.group],
   notify: (person, text) => IM.notify(person, text),
   announce: text => broadcast({ type: 'announce', text, icon: 'bell' }),
   costs: () => COSTS.summary()
@@ -504,7 +526,19 @@ async function api(req, res, url) {
   // ---------------------------------------------------------------- lights + TV (home network or signed in)
   if (p.startsWith('/api/home/')) {
     if (!admin && !home) return send(res, 403, { error: 'Sign in to control the house from outside' });
+    const pm = p.match(/^\/api\/home\/recipes\/photo\/([a-z0-9]+)\.jpg$/i);
+    if (pm && m === 'GET') {
+      try {
+        const buf = await fsp.readFile(RCP.photoFile(pm[1]));
+        res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=604800' });
+        return res.end(buf);
+      } catch { return send(res, 404, { error: 'No photo' }); }
+    }
     try {
+      if (p === '/api/home/recipes/shop' && m === 'POST') {
+        const b = await readBody(req);
+        return send(res, 200, await RCP.shopFromScreen(String(b.id || ''), Array.isArray(b.items) ? b.items.map(String).slice(0, 80) : null, b.who ? String(b.who) : null));
+      }
       if (p === '/api/home/govee/scenes') return send(res, 200, await GV.scenes(url.searchParams.get('id') || ''));
       if (p === '/api/home/govee/scene' && m === 'POST') { const b = await readBody(req); return send(res, 200, await GV.playScene(String(b.id || ''), String(b.name || ''))); }
       if (p.startsWith('/api/home/tv')) return await TV.route(req, res, p, m, url, readBody, send);

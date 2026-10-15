@@ -1,11 +1,11 @@
 {
-  "name": "Steinnheimer & Armada Home",
+  "name": "Steinheimer & Armada Home",
   "short_name": "Home",
   "start_url": "/app",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#F3EFE8",
-  "theme_color": "#F3EFE8",
+  "background_color": "#0B0B0A",
+  "theme_color": "#0B0B0A",
   "icons": [
     { "src": "/app-icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/app-icon-512.png", "sizes": "512x512", "type": "image/png" },
