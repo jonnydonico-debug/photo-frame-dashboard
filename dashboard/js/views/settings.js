@@ -8,7 +8,7 @@
 
   function cfg() { return App.displayCfg(); }
   function save(c) {
-    D.display = { night: c.night, lockAfter: c.lockAfter };
+    D.display = { night: c.night, lockAfter: c.lockAfter, lock: c.lock };
     App.emit('data');
     paint();
   }
@@ -33,10 +33,32 @@
   function status(c) {
     var n = c.night, on = App.isNight();
     if (n.mode === 'on') return 'Night mode is on all the time.';
-    if (n.mode === 'off') return 'Night mode is off. The lock screen shows photos at night too.';
+    if (n.mode === 'off') return 'Night mode is off. The lock screen still switches to its night look between these times.';
     if (n.from === n.to) return 'Pick two different times to use the schedule.';
     return on ? 'On now · switches back to day at <b>' + App.fmtHHMM(n.to) + '</b>.' : 'Turns on tonight at <b>' + App.fmtHHMM(n.from) + '</b>.';
   }
+  // Lock screen look: wallpaper thumbnails + night / details / clock style
+  function lockLook(L) {
+    var wp = function (id, label, sub, img) {
+      return '<button class="st-wp' + (L.wallpaper === id ? ' is-on' : '') + '" data-wallpaper="' + id + '">' +
+        '<span class="st-wp-img" style="' + img + '"></span><b>' + label + '</b><small>' + sub + '</small></button>';
+    };
+    return '<section class="card st-card st-card--wide">' +
+      '<div class="st-title"><span class="st-ico">' + App.icon('photo', 28) + '</span><div><h3>Lock screen</h3><p>What the frame shows when it’s locked.</p></div>' +
+      '<button class="btn st-try" data-lock>' + App.icon('lock', 22) + 'Try it</button></div>' +
+      '<div class="st-look">' +
+        '<div class="st-wps">' +
+          wp('scene', 'Henley Gate', 'Pixel scene · day & night', 'background-image:url(/lock/henley-day.jpg)') +
+          wp('photos', 'Photos', 'Your photo slideshow', 'background-image:linear-gradient(135deg,#B9A58C,#6E8069)') +
+        '</div>' +
+        '<div class="st-opts">' +
+          '<div class="st-row"><div class="label">At night</div>' + seg('locknight', [['scene', L.wallpaper === 'scene' ? 'Night scene' : 'Photos'], ['red', 'Red clock (no blue light)']], L.night) + '</div>' +
+          '<div class="st-row"><div class="label">Show</div>' + seg('lockdetails', [['full', 'Clock, weather & next event'], ['clock', 'Just the clock']], L.details) + '</div>' +
+          (L.wallpaper === 'scene' ? '<div class="st-row"><div class="label">Clock style</div>' + seg('lockfont', [['pixel', 'Pixel'], ['classic', 'Classic']], L.font) + '</div>' : '') +
+        '</div>' +
+      '</div></section>';
+  }
+
   function paint() {
     if (!V.el) return;
     var c = cfg(), n = c.night, auto = n.mode === 'auto';
@@ -51,12 +73,13 @@
       '<div class="st-foot"><p class="st-status">' + status(c) + '</p><button class="btn" data-preview>' + App.icon('moon', 22) + 'Preview</button></div>' +
       '</section>' +
       '<section class="card st-card">' +
-      '<div class="st-title"><span class="st-ico">' + App.icon('lock', 28) + '</span><div><h3>Lock screen</h3><p>Photos and the time by day, a dim red clock during night mode. Tap it to wake.</p></div></div>' +
+      '<div class="st-title"><span class="st-ico">' + App.icon('lock', 28) + '</span><div><h3>Locking</h3><p>The lock screen follows the night-mode schedule on its own. Tap it to wake.</p></div></div>' +
       '<button class="btn btn--solid st-lock" data-lock>' + App.icon('lock', 24) + 'Lock now</button>' +
       '<div class="st-row"><div class="label">Lock automatically after</div>' +
       seg('autolock', [[60, '1 min'], [120, '2 min'], [300, '5 min'], [600, '10 min'], [0, 'Never']], c.lockAfter) + '</div>' +
       '<p class="st-tip">' + App.icon('clock', 20) + '<span>Press and hold the clock in the bottom-left corner to lock from any tab.</span></p>' +
       '</section>' +
+      lockLook(c.lock) +
       '</div></div>';
   }
 
@@ -86,6 +109,10 @@
     if (b.dataset.nmode) { c.night.mode = b.dataset.nmode; return save(c); }
     if (b.dataset.level) { c.night.level = b.dataset.level; save(c); if (!App.isNight()) App.previewNight(4); return; }
     if (b.dataset.autolock != null) { c.lockAfter = +b.dataset.autolock; return save(c); }
+    if (b.dataset.wallpaper) { c.lock.wallpaper = b.dataset.wallpaper; return save(c); }
+    if (b.dataset.locknight) { c.lock.night = b.dataset.locknight; return save(c); }
+    if (b.dataset.lockdetails) { c.lock.details = b.dataset.lockdetails; return save(c); }
+    if (b.dataset.lockfont) { c.lock.font = b.dataset.lockfont; return save(c); }
     if (b.hasAttribute('data-lock')) return App.lock();
     if (b.hasAttribute('data-preview')) { App.previewNight(8); App.toast('Night mode preview · 8 seconds', { icon: 'moon', ms: 2500 }); }
   }

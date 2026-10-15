@@ -449,7 +449,7 @@ setInterval(refreshPlex, 15000);
 // ------------------------------------------------------------------ HTTP helpers
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml',
-  '.webmanifest': 'application/manifest+json', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.txt': 'text/plain' };
+  '.webmanifest': 'application/manifest+json', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.txt': 'text/plain', '.mp4': 'video/mp4' };
 function send(res, code, body, headers = {}) {
   const isObj = body !== null && typeof body === 'object' && !Buffer.isBuffer(body);
   res.writeHead(code, Object.assign({ 'Content-Type': isObj ? 'application/json' : 'text/plain; charset=utf-8', 'Cache-Control': 'no-store, max-age=0' }, headers));
@@ -466,12 +466,21 @@ function readBody(req, limit = 30e6) {
     req.on('error', reject);
   });
 }
-async function serveFile(res, file, cache) {
+async function serveFile(res, file, cache, req) {
   try {
     const st = await fsp.stat(file);
     if (!st.isFile()) return false;
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Content-Length': st.size,
-      'Cache-Control': cache || 'no-cache' });
+    const type = MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
+    // Byte ranges, so videos (the lock-screen scenes) can stream and loop without re-downloading
+    const m = req && /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || '').trim());
+    if (m && (m[1] || m[2])) {
+      let a = m[1] ? +m[1] : Math.max(0, st.size - +m[2]), b = m[1] && m[2] ? Math.min(+m[2], st.size - 1) : st.size - 1;
+      if (a >= st.size || a > b) { res.writeHead(416, { 'Content-Range': 'bytes */' + st.size }); res.end(); return true; }
+      res.writeHead(206, { 'Content-Type': type, 'Content-Length': b - a + 1, 'Content-Range': 'bytes ' + a + '-' + b + '/' + st.size, 'Accept-Ranges': 'bytes', 'Cache-Control': cache || 'no-cache' });
+      fs.createReadStream(file, { start: a, end: b }).pipe(res);
+      return true;
+    }
+    res.writeHead(200, { 'Content-Type': type, 'Content-Length': st.size, 'Accept-Ranges': 'bytes', 'Cache-Control': cache || 'no-cache' });
     fs.createReadStream(file).pipe(res);
     return true;
   } catch { return false; }
@@ -635,7 +644,9 @@ async function api(req, res, url) {
         clean.display = {
           night: { mode: ['auto', 'on', 'off'].includes(n.mode) ? n.mode : 'auto', from: hhmm(n.from) || '21:30', to: hhmm(n.to) || '06:30',
             level: ['dim', 'medium', 'bright'].includes(n.level) ? n.level : 'medium' },
-          lockAfter: [0, 60, 120, 300, 600].includes(+(v && v.lockAfter)) ? +v.lockAfter : 120
+          lockAfter: [0, 60, 120, 300, 600].includes(+(v && v.lockAfter)) ? +v.lockAfter : 120,
+          lock: (L => ({ wallpaper: ['scene', 'photos'].includes(L.wallpaper) ? L.wallpaper : 'scene', night: ['scene', 'red'].includes(L.night) ? L.night : 'scene',
+            details: ['full', 'clock'].includes(L.details) ? L.details : 'full', font: ['pixel', 'classic'].includes(L.font) ? L.font : 'pixel' }))((v && v.lock) || {})
         };
       } else if (k === 'events') {
         // Events from connected calendars are read-only: keep the Mac's copy of them
@@ -985,7 +996,7 @@ const server = http.createServer(async (req, res) => {
       const rel = url.pathname === '/' ? '/index.html' : url.pathname;
       if (SOURCE_OK.test(rel) && await serveFile(res, safeJoin(ROOT, rel.slice(1)))) return;
       const pub = safeJoin(path.join(ROOT, 'public'), rel.slice(1));
-      if (pub && await serveFile(res, pub, 'public, max-age=86400')) return;
+      if (pub && await serveFile(res, pub, 'public, max-age=86400', req)) return;
       if (!/\.\w+$/.test(rel) && await serveFile(res, path.join(ROOT, 'index.html'))) return;
       return send(res, 404, 'Not found');
     }

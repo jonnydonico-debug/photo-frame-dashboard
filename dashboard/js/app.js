@@ -27,12 +27,16 @@
   // ------------------------------------------------------------ night mode (red, no blue light)
   // Saved in DATA.display so every screen shares it; the Settings tab edits it.
   var NIGHT_DEFAULT = { mode: 'auto', from: '21:30', to: '06:30', level: 'medium' };
+  // Lock screen look: wallpaper 'scene' (Henley Gate pixel scene, day/night) or 'photos';
+  // at night 'scene' (night scene, dimmed) or 'red' (red clock, no blue light); details 'full' or 'clock'.
+  var LOCK_DEFAULT = { wallpaper: 'scene', night: 'scene', details: 'full', font: 'pixel' };
   App.LEVELS = { dim: .42, medium: .62, bright: .85 };
   App.displayCfg = function () {
     var d = D.display || {};
     return {
       night: Object.assign({}, NIGHT_DEFAULT, d.night || {}),
-      lockAfter: d.lockAfter == null ? 120 : d.lockAfter
+      lockAfter: d.lockAfter == null ? 120 : d.lockAfter,
+      lock: Object.assign({}, LOCK_DEFAULT, d.lock || {})
     };
   };
   App.toMin = function (hhmm) { var p = String(hhmm).split(':'); return (+p[0] || 0) * 60 + (+p[1] || 0); };
@@ -47,6 +51,13 @@
     var now = App.now(), m = now.getHours() * 60 + now.getMinutes(), a = App.toMin(n.from), b = App.toMin(n.to);
     return a === b ? false : a < b ? (m >= a && m < b) : (m >= a || m < b);
   };
+  // Night-time by the schedule alone (used to pick the night scene even when red mode is off)
+  App.inNightHours = function () {
+    var n = App.displayCfg().night, now = App.now(), m = now.getHours() * 60 + now.getMinutes();
+    var a = App.toMin(n.from), b = App.toMin(n.to);
+    return a === b ? false : a < b ? (m >= a && m < b) : (m >= a || m < b);
+  };
+  App.sceneIsNight = function () { var n = App.displayCfg().night; return App.isNight() || (n.mode === 'off' && App.inNightHours()); };
   function applyNight() {
     var stage = $('#stage');
     if (!stage) return;
@@ -65,12 +76,25 @@
   App.on('minute', applyNight);
   App.on('data', applyNight);
 
-  // Lock screen: the photo frame by day, the red clock at night.
+  // Lock screen: the wallpaper (pixel scene or photos) with a clock; at night either the night
+  // scene or the red clock, as chosen in Settings.
+  App.lockMode = function () { return App.isNight() && App.displayCfg().lock.night === 'red' ? 'night' : 'ambient'; };
+  App.isLocked = function () { return App.mode === 'ambient' || App.mode === 'night'; };
   App.lock = function () {
     App.closeSheet();
     App.go('home');
-    App.setMode(App.isNight() ? 'night' : 'ambient');
+    App.setMode(App.lockMode());
   };
+  // While locked, follow the schedule by itself: day -> night at the start time, back in the morning.
+  function syncLock() {
+    if (!App.isLocked()) return;
+    var want = App.lockMode();
+    if (want !== App.mode) App.setMode(want);
+    else App.emit('lockstyle');
+  }
+  App.on('night', syncLock);
+  App.on('minute', function () { if (App.isLocked()) App.emit('lockstyle'); });
+  App.on('data', function () { if (App.isLocked()) syncLock(); });
 
   var DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];

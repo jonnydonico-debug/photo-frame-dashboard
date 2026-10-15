@@ -30,3 +30,19 @@
 .st-lock { min-height: 64px; font-size: 20px; width: 100%; }
 .st-tip { display: flex; gap: 10px; align-items: flex-start; margin: 0; font-size: 16px; line-height: 1.35; color: var(--mute); }
 .st-tip svg { flex: none; margin-top: 1px; }
+
+/* Lock screen look (full-width card under the two above); the page scrolls when it doesn't fit */
+.st-cols { overflow-y: auto; padding-bottom: 8px; }
+.st-card--wide { grid-column: 1 / -1; }
+.st-card--wide .st-title { align-items: center; }
+.st-card--wide .st-title > div { flex: 1; }
+.st-try { flex: none; }
+.st-look { display: grid; grid-template-columns: 1.1fr 1fr; gap: 26px; align-items: start; }
+.st-wps { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.st-wp { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; padding: 10px; border-radius: 20px; background: var(--paper); box-shadow: inset 0 0 0 3px transparent; }
+.st-wp.is-on { box-shadow: inset 0 0 0 3px var(--ink); }
+.st-wp-img { display: block; width: 100%; aspect-ratio: 16 / 10; border-radius: 12px; background-size: cover; background-position: center; image-rendering: pixelated; margin-bottom: 6px; }
+.st-wp b { font-size: 19px; }
+.st-wp small { font-size: 14px; color: var(--mute); }
+.st-opts { display: flex; flex-direction: column; gap: 18px; }
+.st-opts .st-seg button { font-size: 16px; min-height: 48px; }

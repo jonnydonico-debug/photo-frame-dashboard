@@ -2,6 +2,18 @@
 
 Newest first. Claude Code (or you) adds an entry for every edit made directly on the Mac.
 
+## 2026-10-15 — (from GitHub) Lock screen: Henley Gate scenes, follows night mode by itself
+Deployed from the GitHub copy (which now includes all the Mac-side changes above).
+- Fix: while locked, the lock screen now switches to its night look at the night-mode start time
+  and back in the morning on its own (it used to wait for a tap). `app/js/app.js` (lockMode, syncLock).
+- Lock screen wallpaper: Henley Gate pixel-art videos, day and night (`app/public/lock/henley-*.mp4`
+  + poster .jpg, 1280x800), with a pixel clock, date, weather and next event in the sky.
+  `app/js/views/ambient.js`, `app/css/views/ambient.css`, Silkscreen font in `app/index.html`.
+- Frame Settings → new "Lock screen" card: wallpaper (Henley Gate / Photos), at night (night
+  scene / red clock), show (clock + weather + next event / just the clock), clock style (pixel /
+  classic). Saved in `display.lock`. `app/js/views/settings.js`, `app/css/views/settings.css`,
+  `app/server/server.mjs` (accepts display.lock; static files support byte ranges for video).
+
 ## 2026-10-15 — Phone: To-do tab with Mine / House
 JD couldn't find to-dos or reminders on the phone (they were under More) and wants a personal list
 per person plus a house list.
