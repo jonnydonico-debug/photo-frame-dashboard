@@ -2,6 +2,18 @@
 
 Newest first. Claude Code (or you) adds an entry for every edit made directly on the Mac.
 
+## 2026-10-16 — (from GitHub) Lock-screen video: light enough for the frame tablet
+The frame (Android 6 "YS01", WebView 106) played the 1280x800 scene for ~1 h, then its hardware
+decoder failed (PIPELINE_ERROR_DECODE), the screen froze and the app crashed.
+- `app/public/lock/henley-*.{mp4,webm,jpg}`: re-encoded at the art's own pixel grid (6x6 px blocks
+  → 288x180, stored 2x at 576x360; MP4 is H.264 Constrained Baseline). ~5x less decoding.
+- `app/css/views/ambient.css`: `image-rendering: pixelated` so it scales up crisp.
+- `app/js/views/ambient.js`: decoder released while unlocked, a fresh decoder every 20 min, and on a
+  decode error: retry → other format → still picture until the next lock. Reports "video-playing"
+  once per load (with the size) instead of every loop.
+- Scene URLs carry `?v=2` (ambient.js `VER`, settings.js thumbnail) so the tablet and Cloudflare
+  fetch the new files instead of cached 1280x800 copies. Bump it whenever the files change.
+
 ## 2026-10-16 — (from GitHub) Lock-screen video fixes + screens reload after updates
 - `app/js/views/ambient.js`: the "allow video" step now runs on a finished tap (touchend/click);
   Android doesn't count a touch-down, so the scene stayed a still picture. Plays WebM (VP9) where

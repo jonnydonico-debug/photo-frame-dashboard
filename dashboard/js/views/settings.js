@@ -48,7 +48,7 @@
       '<button class="btn st-try" data-lock>' + App.icon('lock', 22) + 'Try it</button></div>' +
       '<div class="st-look">' +
         '<div class="st-wps">' +
-          wp('scene', 'Henley Gate', 'Pixel scene · day & night', 'background-image:url(/lock/henley-day.jpg)') +
+          wp('scene', 'Henley Gate', 'Pixel scene · day & night', 'background-image:url(/lock/henley-day.jpg?v=2)') +
           wp('photos', 'Photos', 'Your photo slideshow', 'background-image:linear-gradient(135deg,#B9A58C,#6E8069)') +
         '</div>' +
         '<div class="st-opts">' +

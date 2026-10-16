@@ -8,6 +8,7 @@
   var D = window.DATA, $ = App.$;
   var amb = { show: null, scene: null }, shiftTimer = null, primed = false;
   var SCENES = { day: '/lock/henley-day', night: '/lock/henley-night' };
+  var VER = '?v=2'; // bump when the scene files change, so tablets and Cloudflare don't keep old copies
   // MP4 (H.264) where the browser can play it (lighter on tablets), WebM (VP9) otherwise or if it fails
   var fmt = null;
   function pickFmt(v) {
@@ -15,7 +16,7 @@
     var mp4 = v.canPlayType('video/mp4; codecs="avc1.4D401F"'), webm = v.canPlayType('video/webm; codecs="vp9"');
     return (fmt = mp4 ? 'mp4' : webm ? 'webm' : 'mp4');
   }
-  function srcFor(v, which) { return SCENES[which] + '.' + pickFmt(v); }
+  function srcFor(v, which) { return SCENES[which] + '.' + pickFmt(v) + VER; }
 
   function lockCfg() { return App.displayCfg().lock; }
   function sceneOn() { return lockCfg().wallpaper === 'scene'; }
@@ -49,30 +50,60 @@
 
   // ------------------------------------------------------------ the scene video
   function sceneWanted() { return App.sceneIsNight() ? 'night' : 'day'; }
+  // Decoder health: older tablets' video decoders wear out on a long loop (one failed after ~1 h).
+  // So: a fresh decoder every 20 min, the decoder released while the dashboard is in use, and on a
+  // decode error retry, then try the other format, then settle on the still picture.
+  var dec = { started: 0, errors: [], gaveUp: false, said: false };
+  var FRESH_MS = 20 * 60000;
+  function poster(v, which) {
+    v.poster = SCENES[which] + '.jpg' + VER;
+    v.style.backgroundImage = 'url(' + v.poster + ')'; // shows until (or if) the video can play
+  }
+  function release(v) {
+    v.pause();
+    if (v.getAttribute('src')) { v.removeAttribute('src'); try { v.load(); } catch (e) {} }
+    v.dataset.which = '';
+  }
+  function load(v, which) {
+    release(v);
+    v.dataset.which = which; poster(v, which);
+    v.src = srcFor(v, which);
+    dec.started = Date.now(); dec.said = false;
+  }
+  function start(v) { var p = v.play(); if (p && p.catch) p.catch(function (e) { report('play-blocked', (e && e.name) + ': ' + (e && e.message)); }); }
   function playScene() {
     var v = amb.scene, which = sceneWanted();
-    if (v.dataset.which !== which) {
-      v.dataset.which = which;
-      v.poster = SCENES[which] + '.jpg';
-      v.style.backgroundImage = 'url(' + v.poster + ')'; // shows until (or if) the video can play
-      v.src = srcFor(v, which);
-    }
+    poster(v, which);
     // At night the scene is dimmed to the night-mode brightness
     var k = App.LEVELS[App.displayCfg().night.level] || App.LEVELS.medium;
     $('#ambient').style.setProperty('--scene-dim', which === 'night' && App.isNight() ? (0.35 + k * 0.65).toFixed(2) : '1');
     $('#ambient').classList.toggle('is-night-scene', which === 'night');
-    var p = v.play(); if (p && p.catch) p.catch(function (e) { report('play-blocked', (e && e.name) + ': ' + (e && e.message)); /* the poster still shows */ });
+    if (dec.gaveUp) return; // still picture until the next lock
+    if (v.dataset.which !== which || !v.getAttribute('src') || Date.now() - dec.started > FRESH_MS) load(v, which);
+    if (v.paused) start(v);
   }
-  function stopScene() { if (amb.scene && !amb.scene.paused) amb.scene.pause(); }
-  // Some tablets only allow video after a touch: start/stop it once on the first touch so later
-  // lock screens can play on their own.
+  function onError() {
+    var v = amb.scene, e = v.error, now = Date.now();
+    dec.errors = dec.errors.filter(function (t) { return now - t < 15 * 60000; }).concat([now]);
+    report('video-error', fmt + ' code ' + (e && e.code) + ' ' + ((e && e.message) || '') + ' · #' + dec.errors.length);
+    if (App.mode !== 'ambient') return release(v);
+    var which = v.dataset.which || sceneWanted();
+    if (dec.errors.length >= 3) { dec.gaveUp = true; release(v); poster(v, which); report('gave-up', 'showing the still picture'); return; }
+    if (dec.errors.length === 2) fmt = fmt === 'mp4' ? 'webm' : 'mp4';
+    release(v); poster(v, which);
+    setTimeout(function () { if (App.mode === 'ambient' && !dec.gaveUp) { load(v, which); start(v); } }, 3000);
+  }
+  // Unlocked: free the decoder (and start fresh next time)
+  function stopScene() { if (amb.scene) release(amb.scene); dec.gaveUp = false; }
+  // Some tablets only allow video after a tap: play/stop once on the first tap so later lock
+  // screens can start on their own.
   function prime() {
     if (primed || !amb.scene) return;
     primed = true;
     var v = amb.scene;
-    if (!v.src) { v.dataset.which = sceneWanted(); v.src = srcFor(v, v.dataset.which); }
+    if (!v.getAttribute('src')) { v.dataset.which = sceneWanted(); v.src = srcFor(v, v.dataset.which); }
     var p = v.play();
-    if (p && p.then) p.then(function () { if (App.mode !== 'ambient') v.pause(); }).catch(function (e) { primed = false; report('prime-failed', (e && e.name) + ': ' + (e && e.message)); });
+    if (p && p.then) p.then(function () { if (App.mode !== 'ambient') release(v); }).catch(function (e) { primed = false; report('prime-failed', (e && e.name) + ': ' + (e && e.message)); });
   }
   // Tell the Mac (logs/server.log) when the scene video can't play, so problems are visible remotely
   function report(event, detail) {
@@ -119,13 +150,8 @@
     // Android only counts a finished tap (not a touch-down) as permission to play video
     document.addEventListener('touchend', prime, true);
     document.addEventListener('click', prime, true);
-    amb.scene.addEventListener('error', function () {
-      var e = amb.scene.error, was = fmt;
-      report('video-error', fmt + ' code ' + (e && e.code) + ' ' + ((e && e.message) || ''));
-      // Try the other format once
-      if (!amb.triedOther) { amb.triedOther = true; fmt = was === 'mp4' ? 'webm' : 'mp4'; var w = amb.scene.dataset.which || sceneWanted(); amb.scene.src = srcFor(amb.scene, w); if (App.mode === 'ambient') { var p = amb.scene.play(); if (p && p.catch) p.catch(function () {}); } }
-    });
-    amb.scene.addEventListener('playing', function () { report('video-playing', fmt); });
+    amb.scene.addEventListener('error', onError);
+    amb.scene.addEventListener('playing', function () { if (!dec.said) { dec.said = true; report('video-playing', fmt + ' ' + amb.scene.videoWidth + 'x' + amb.scene.videoHeight); } });
   });
 
   App.on('mode', function (m) {

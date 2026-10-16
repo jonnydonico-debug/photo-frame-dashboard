@@ -49,3 +49,5 @@
 .ambient.is-classic .px-time { font-size: 170px; font-weight: 600; letter-spacing: -.04em; }
 /* The lock screen sits outside the night-mode red filter, so its pictures and video stay as they are */
 .stage.is-red .ambient img, .stage.is-red .ambient video { filter: none; }
+/* The scenes are stored at the art's own pixel size; scale them up with crisp square pixels */
+.amb-scene { image-rendering: pixelated; }
