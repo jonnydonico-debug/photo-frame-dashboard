@@ -463,7 +463,7 @@ setInterval(refreshPlex, 15000);
 // ------------------------------------------------------------------ HTTP helpers
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml',
-  '.webmanifest': 'application/manifest+json', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.txt': 'text/plain', '.mp4': 'video/mp4' };
+  '.webmanifest': 'application/manifest+json', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.txt': 'text/plain', '.mp4': 'video/mp4', '.webm': 'video/webm' };
 function send(res, code, body, headers = {}) {
   const isObj = body !== null && typeof body === 'object' && !Buffer.isBuffer(body);
   res.writeHead(code, Object.assign({ 'Content-Type': isObj ? 'application/json' : 'text/plain; charset=utf-8', 'Cache-Control': 'no-store, max-age=0' }, headers));
@@ -499,6 +499,7 @@ async function serveFile(res, file, cache, req) {
     return true;
   } catch { return false; }
 }
+const lockDiagSeen = {};
 const BUILD = (() => {
   const h = crypto.createHash('sha1');
   const walk = d => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) walk(p); else h.update(p + fs.statSync(p).mtimeMs); } };
@@ -540,7 +541,7 @@ async function api(req, res, url) {
   if (p === '/api/events') {
     if (!canRead) return send(res, 401, { error: 'Sign in to see this' });
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
-    res.write('retry: 3000\ndata: ' + JSON.stringify({ type: 'hello', rev }) + '\n\n');
+    res.write('retry: 3000\ndata: ' + JSON.stringify({ type: 'hello', rev, build: FROM_SOURCE ? BUILD : undefined }) + '\n\n');
     streams.add(res);
     req.on('close', () => streams.delete(res));
     return;
@@ -565,6 +566,13 @@ async function api(req, res, url) {
       if (p === '/api/home/govee/scenes') return send(res, 200, await GV.scenes(url.searchParams.get('id') || ''));
       if (p === '/api/home/govee/scene' && m === 'POST') { const b = await readBody(req); return send(res, 200, await GV.playScene(String(b.id || ''), String(b.name || ''))); }
       if (p.startsWith('/api/home/tv')) return await TV.route(req, res, p, m, url, readBody, send);
+      if (p === '/api/home/lockdiag' && m === 'POST') {
+        // The frame reports lock-screen video trouble here so it shows up in logs/server.log
+        const b = await readBody(req), k = String(b.event || '').slice(0, 30);
+        const now = Date.now(); lockDiagSeen[k] = lockDiagSeen[k] || 0;
+        if (now - lockDiagSeen[k] > 60000) { lockDiagSeen[k] = now; log('lockscreen:', k, String(b.detail || '').slice(0, 200), '|', String(b.ua || '').slice(0, 120)); }
+        return send(res, 200, { ok: true });
+      }
       if (p === '/api/home/store' && m === 'POST') {
         // Screens can name a new store (stores are otherwise admin-only)
         const b = await readBody(req), r = resolveStore(state.stores, b.name);

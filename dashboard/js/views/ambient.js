@@ -7,7 +7,15 @@
   'use strict';
   var D = window.DATA, $ = App.$;
   var amb = { show: null, scene: null }, shiftTimer = null, primed = false;
-  var SCENES = { day: '/lock/henley-day.mp4', night: '/lock/henley-night.mp4' };
+  var SCENES = { day: '/lock/henley-day', night: '/lock/henley-night' };
+  // MP4 (H.264) where the browser can play it (lighter on tablets), WebM (VP9) otherwise or if it fails
+  var fmt = null;
+  function pickFmt(v) {
+    if (fmt) return fmt;
+    var mp4 = v.canPlayType('video/mp4; codecs="avc1.4D401F"'), webm = v.canPlayType('video/webm; codecs="vp9"');
+    return (fmt = mp4 ? 'mp4' : webm ? 'webm' : 'mp4');
+  }
+  function srcFor(v, which) { return SCENES[which] + '.' + pickFmt(v); }
 
   function lockCfg() { return App.displayCfg().lock; }
   function sceneOn() { return lockCfg().wallpaper === 'scene'; }
@@ -45,15 +53,15 @@
     var v = amb.scene, which = sceneWanted();
     if (v.dataset.which !== which) {
       v.dataset.which = which;
-      v.poster = SCENES[which].replace('.mp4', '.jpg');
+      v.poster = SCENES[which] + '.jpg';
       v.style.backgroundImage = 'url(' + v.poster + ')'; // shows until (or if) the video can play
-      v.src = SCENES[which];
+      v.src = srcFor(v, which);
     }
     // At night the scene is dimmed to the night-mode brightness
     var k = App.LEVELS[App.displayCfg().night.level] || App.LEVELS.medium;
     $('#ambient').style.setProperty('--scene-dim', which === 'night' && App.isNight() ? (0.35 + k * 0.65).toFixed(2) : '1');
     $('#ambient').classList.toggle('is-night-scene', which === 'night');
-    var p = v.play(); if (p && p.catch) p.catch(function () { /* autoplay blocked: the poster still shows */ });
+    var p = v.play(); if (p && p.catch) p.catch(function (e) { report('play-blocked', (e && e.name) + ': ' + (e && e.message)); /* the poster still shows */ });
   }
   function stopScene() { if (amb.scene && !amb.scene.paused) amb.scene.pause(); }
   // Some tablets only allow video after a touch: start/stop it once on the first touch so later
@@ -62,9 +70,17 @@
     if (primed || !amb.scene) return;
     primed = true;
     var v = amb.scene;
-    if (!v.src) { v.dataset.which = sceneWanted(); v.src = SCENES[v.dataset.which]; }
+    if (!v.src) { v.dataset.which = sceneWanted(); v.src = srcFor(v, v.dataset.which); }
     var p = v.play();
-    if (p && p.then) p.then(function () { if (App.mode !== 'ambient') v.pause(); }).catch(function () { primed = false; });
+    if (p && p.then) p.then(function () { if (App.mode !== 'ambient') v.pause(); }).catch(function (e) { primed = false; report('prime-failed', (e && e.name) + ': ' + (e && e.message)); });
+  }
+  // Tell the Mac (logs/server.log) when the scene video can't play, so problems are visible remotely
+  function report(event, detail) {
+    try {
+      var v = amb.scene;
+      fetch('/api/home/lockdiag', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-HQ': '1' },
+        body: JSON.stringify({ event: event, detail: detail + (v ? ' · ready ' + v.readyState + ' net ' + v.networkState + ' src ' + (v.dataset.which || '-') : ''), ua: navigator.userAgent }) }).catch(function () {});
+    } catch (e) {}
   }
 
   // ------------------------------------------------------------ paint
@@ -100,7 +116,16 @@
     amb.scene.muted = true; amb.scene.defaultMuted = true;
     $('#ambient').addEventListener('click', function () { App.setMode('day'); App.go('home'); });
     $('#night').addEventListener('click', function () { App.setMode('day'); App.go('home'); });
-    document.addEventListener('pointerdown', prime, true);
+    // Android only counts a finished tap (not a touch-down) as permission to play video
+    document.addEventListener('touchend', prime, true);
+    document.addEventListener('click', prime, true);
+    amb.scene.addEventListener('error', function () {
+      var e = amb.scene.error, was = fmt;
+      report('video-error', fmt + ' code ' + (e && e.code) + ' ' + ((e && e.message) || ''));
+      // Try the other format once
+      if (!amb.triedOther) { amb.triedOther = true; fmt = was === 'mp4' ? 'webm' : 'mp4'; var w = amb.scene.dataset.which || sceneWanted(); amb.scene.src = srcFor(amb.scene, w); if (App.mode === 'ambient') { var p = amb.scene.play(); if (p && p.catch) p.catch(function () {}); } }
+    });
+    amb.scene.addEventListener('playing', function () { report('video-playing', fmt); });
   });
 
   App.on('mode', function (m) {

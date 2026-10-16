@@ -2,6 +2,16 @@
 
 Newest first. Claude Code (or you) adds an entry for every edit made directly on the Mac.
 
+## 2026-10-16 — (from GitHub) Lock-screen video fixes + screens reload after updates
+- `app/js/views/ambient.js`: the "allow video" step now runs on a finished tap (touchend/click);
+  Android doesn't count a touch-down, so the scene stayed a still picture. Plays WebM (VP9) where
+  MP4 (H.264) isn't supported, and switches format once if a video fails. Reports problems
+  (play blocked, video error) and successful playback to the server log ("lockscreen: …").
+- `app/public/lock/henley-{day,night}.webm` (new): VP9 copies of the scenes.
+- `app/js/sync.js` + `app/server/server.mjs` (build id in the event stream's hello): screens reload
+  themselves when the Mac runs newer code, once nobody has touched them for 45 s (or when locked).
+- `app/server/server.mjs`: `POST /api/home/lockdiag` (logs, throttled) and the .webm file type.
+
 ## 2026-10-16 — (from GitHub) Warm ↔ cool slider for lights
 - Frame `app/js/views/control.js` + `app/css/views/control.css`, phone `app/js/app/home.js` +
   `app/css/app.css`: lights with whites (Key Lights, Govee) get a colour-temperature slider with a

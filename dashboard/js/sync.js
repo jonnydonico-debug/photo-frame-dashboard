@@ -105,11 +105,25 @@
     if (busy()) { rerenderTimer = setTimeout(refreshUI, 2000); return; }
     App.rerender();
   }
+  // New code on the Mac (a deploy restarts the server, so the event stream reconnects with a new
+  // build id): reload this screen so it isn't stuck on old code. Waits until nobody is using it.
+  var MY_BUILD = (function () { var el = document.querySelector('script[src*="/v/"], link[href*="/v/"]'); var m = el && /\/v\/([\w-]+)\//.exec(el.getAttribute('src') || el.getAttribute('href')); return m ? m[1] : null; })();
+  var lastTouch = Date.now();
+  document.addEventListener('pointerdown', function () { lastTouch = Date.now(); }, true);
+  function checkBuild(b) {
+    if (!b || !MY_BUILD || b === MY_BUILD) return;
+    (function tryReload() {
+      var idle = Date.now() - lastTouch > 45000, locked = window.App && App.isLocked && App.isLocked();
+      if ((idle || locked || document.hidden) && !busy()) location.reload();
+      else setTimeout(tryReload, 15000);
+    })();
+  }
   function connect() {
     if (!online || !window.EventSource) return;
     var es = new EventSource('/api/events');
     es.onmessage = function (m) {
       var msg; try { msg = JSON.parse(m.data); } catch (e) { return; }
+      if (msg.type === 'hello') checkBuild(msg.build);
       if (msg.type === 'hello' && msg.rev > rev) {
         load().then(refreshUI);
       } else if (msg.type === 'patch') {
