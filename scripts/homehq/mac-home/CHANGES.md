@@ -2,6 +2,12 @@
 
 Newest first. Claude Code (or you) adds an entry for every edit made directly on the Mac.
 
+## 2026-10-16 — (from GitHub) Warm ↔ cool slider for lights
+- Frame `app/js/views/control.js` + `app/css/views/control.css`, phone `app/js/app/home.js` +
+  `app/css/app.css`: lights with whites (Key Lights, Govee) get a colour-temperature slider with a
+  warm-to-cool gradient and the current Kelvin; the presets stay underneath and move the slider.
+  The frame sheet's on/off button now updates when a change turns the light on.
+
 ## 2026-10-16 — (from GitHub) Elgato Key Lights in a "Free Roam" section
 - `app/server/elgato.mjs` (new): finds Key Lights on the Wi-Fi with Bonjour (`dns-sd -B _elg._tcp`)
   or by IP (Admin), reads/sets them over their local API (port 9123, `/elgato/lights`): on/off,

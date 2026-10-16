@@ -41,7 +41,9 @@
       '<div class="lt-row"><button class="btn' + (d.on ? '' : ' btn--solid') + '" data-pw>' + (d.on ? 'Off' : 'On') + '</button><input class="big-range" type="range" min="1" max="100" value="' + (d.level || 100) + '" aria-label="Brightness"></div>' +
       (g.color ? '<div class="sec-l">Colour</div><div class="sw">' + SW.map(function (c) { return '<button data-c="' + c + '" class="' + (d.color === c ? 'is-on' : '') + '" style="background:' + c + '"></button>'; }).join('') +
         '<label class="sw-any"><input type="color" value="' + (d.color || '#FFB020') + '"></label></div>' : '') +
-      (kel ? '<div class="sec-l">Whites</div><div class="chips">' + WH.filter(function (w) { return w[0] >= kel[0] - 300 && w[0] <= kel[1] + 300; }).map(function (w) { var k = Math.max(kel[0], Math.min(kel[1], w[0])); return '<button class="chip' + (d.kelvin === k && !d.color ? ' is-on' : '') + '" data-k="' + k + '"><i class="wh" style="background:' + kHex(k) + '"></i>' + w[1] + '</button>'; }).join('') + '</div>' : '') +
+      (kel ? '<div class="sec-l">Warm ↔ cool <b class="ct-kv" data-kv>' + (d.kelvin && !d.color ? d.kelvin + 'K' : '') + '</b></div>' +
+        '<input class="ct-range" type="range" min="' + kel[0] + '" max="' + kel[1] + '" step="50" value="' + (d.kelvin || Math.round((kel[0] + kel[1]) / 2 / 50) * 50) + '" data-ct aria-label="Colour temperature, warm to cool">' : '') +
+      (kel ? '<div class="chips">' + WH.filter(function (w) { return w[0] >= kel[0] - 300 && w[0] <= kel[1] + 300; }).map(function (w) { var k = Math.max(kel[0], Math.min(kel[1], w[0])); return '<button class="chip' + (d.kelvin === k && !d.color ? ' is-on' : '') + '" data-k="' + k + '"><i class="wh" style="background:' + kHex(k) + '"></i>' + w[1] + '</button>'; }).join('') + '</div>' : '') +
       (isGv ? '<div class="sec-l">Govee scenes</div><div class="chips sc-list"><span class="muted">Loading…</span></div>' : '') + '</div>', {
       tall: true,
       onMount: function (s, close) {
@@ -51,7 +53,7 @@
           var t;
           if (e.target.closest('[data-pw]')) { apply({ on: !d.on, level: d.level || 100 }); close(); return; }
           if ((t = e.target.closest('[data-c]'))) { apply({ on: true, color: t.dataset.c, kelvin: null }); mark(t); return; }
-          if ((t = e.target.closest('[data-k]'))) { apply({ on: true, kelvin: +t.dataset.k, color: null }); mark(t); return; }
+          if ((t = e.target.closest('[data-k]'))) { apply({ on: true, kelvin: +t.dataset.k, color: null }); mark(t); var c2 = s.querySelector('[data-ct]'); if (c2) { c2.value = t.dataset.k; s.querySelector('[data-kv]').textContent = t.dataset.k + 'K'; } return; }
           if ((t = e.target.closest('[data-scene-n]'))) {
             App.$$('[data-scene-n]', s).forEach(function (b) { b.classList.toggle('is-on', b === t); });
             App.post('/api/home/govee/scene', { id: d.id, name: t.dataset.sceneN }).then(function () { App.toast(App.esc(t.dataset.sceneN), { icon: 'bulb', ms: 1600 }); })
@@ -59,6 +61,11 @@
           }
         });
         s.querySelector('.big-range').addEventListener('change', function (e) { apply({ on: true, level: +e.target.value }); });
+        var ct = s.querySelector('[data-ct]');
+        if (ct) {
+          ct.addEventListener('input', function () { s.querySelector('[data-kv]').textContent = ct.value + 'K'; });
+          ct.addEventListener('change', function () { apply({ on: true, kelvin: +ct.value, color: null }); App.$$('[data-c],[data-k]', s).forEach(function (b) { b.classList.toggle('is-on', +b.dataset.k === +ct.value); }); });
+        }
         var pick = s.querySelector('.sw-any input'); if (pick) pick.addEventListener('change', function (e) { apply({ on: true, color: e.target.value.toUpperCase(), kelvin: null }); mark(null); });
         if (isGv) App.get('/api/home/govee/scenes?id=' + encodeURIComponent(d.id)).then(function (list) {
           var box = s.querySelector('.sc-list'); if (!box) return;

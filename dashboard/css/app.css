@@ -639,3 +639,8 @@ a { color: inherit; text-decoration: none; }
 .td-all { display: flex; align-items: center; gap: 4px; margin-top: 10px; color: var(--accent); font-size: 14px; font-weight: 600; }
 .tab span { white-space: nowrap; }
 .dvs-empty { margin: 0 4px 6px; font-size: 14px; color: var(--mute); }
+/* Warm ↔ cool colour-temperature slider */
+.ct-kv { margin-left: 6px; color: var(--ink); text-transform: none; letter-spacing: 0; }
+.ct-range { -webkit-appearance: none; appearance: none; width: 100%; height: 40px; background: transparent; margin: 0 0 10px; }
+.ct-range::-webkit-slider-runnable-track { height: 16px; border-radius: 999px; background: linear-gradient(90deg, #FF8A2A, #FFB45E 22%, #FFD9A8 45%, #FFF3E2 65%, #F4F6FF 82%, #CFDCFF); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .2); }
+.ct-range::-webkit-slider-thumb { -webkit-appearance: none; width: 30px; height: 30px; margin-top: -7px; border-radius: 50%; background: #fff; border: 3px solid #1F1C18; box-shadow: 0 2px 8px rgba(0, 0, 0, .35); }

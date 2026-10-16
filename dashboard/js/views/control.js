@@ -43,18 +43,23 @@
       '<input class="ls-range" type="range" min="1" max="100" value="' + (d.level || 100) + '" data-ls-level aria-label="Brightness"></div>' +
       (g.color ? '<div class="label">Colour</div><div class="ls-sw">' + SWATCHES.map(function (c) { return '<button data-ls-color="' + c[0] + '" class="' + (d.color === c[0] ? 'is-on' : '') + '" style="background:' + c[0] + '" aria-label="' + c[1] + '"></button>'; }).join('') +
         '<label class="ls-custom" aria-label="Pick any colour" style="background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red)"><input type="color" value="' + (d.color || '#FFB020') + '" data-ls-pick></label></div>' : '') +
-      (kel ? '<div class="label">Whites</div><div class="ls-wh">' + WHITES.filter(function (w) { return w[0] >= kel[0] - 300 && w[0] <= kel[1] + 300; }).map(function (w) {
+      (kel ? '<div class="label">Warm ↔ cool <b class="ls-kv" data-ls-kv>' + (d.kelvin && !d.color ? d.kelvin + 'K' : '') + '</b></div>' +
+        '<input class="ls-ct" type="range" min="' + kel[0] + '" max="' + kel[1] + '" step="50" value="' + (d.kelvin || Math.round((kel[0] + kel[1]) / 2 / 50) * 50) + '" data-ls-ct aria-label="Colour temperature, warm to cool">' : '') +
+      (kel ? '<div class="ls-wh">' + WHITES.filter(function (w) { return w[0] >= kel[0] - 300 && w[0] <= kel[1] + 300; }).map(function (w) {
         var k = Math.max(kel[0], Math.min(kel[1], w[0]));
         return '<button data-ls-k="' + k + '" class="' + (d.kelvin === k && !d.color ? 'is-on' : '') + '"><i style="background:' + kelvinHex(k) + '"></i>' + w[1] + '</button>'; }).join('') + '</div>' : '') +
       (isGv ? '<div class="label">Govee scenes</div><div class="ls-scenes"><span class="ls-note">Loading scenes…</span></div>' : '') + '</div>', {
       cls: 'sheet--wide',
       onMount: function (s, close) {
-        function set(patch) { App.setDevice(d.id, patch); s.querySelector('[data-ls-state]').textContent = d.on ? (d.level || 100) + '%' : 'Off'; }
+        function set(patch) {
+          App.setDevice(d.id, patch); s.querySelector('[data-ls-state]').textContent = d.on ? (d.level || 100) + '%' : 'Off';
+          var pw = s.querySelector('[data-ls-power]'); if (pw) { pw.classList.toggle('btn--solid', !d.on); pw.innerHTML = App.icon('bulb', 22) + (d.on ? 'Turn off' : 'Turn on'); }
+        }
         s.addEventListener('click', function (e) {
           var t;
           if (e.target.closest('[data-ls-power]')) { set({ on: !d.on, level: d.level || 100 }); close(); return; }
           if ((t = e.target.closest('[data-ls-color]'))) { set({ on: true, color: t.dataset.lsColor, kelvin: null }); App.$$('[data-ls-color],[data-ls-k]', s).forEach(function (b) { b.classList.toggle('is-on', b === t); }); return; }
-          if ((t = e.target.closest('[data-ls-k]'))) { set({ on: true, kelvin: +t.dataset.lsK, color: null }); App.$$('[data-ls-color],[data-ls-k]', s).forEach(function (b) { b.classList.toggle('is-on', b === t); }); return; }
+          if ((t = e.target.closest('[data-ls-k]'))) { set({ on: true, kelvin: +t.dataset.lsK, color: null }); App.$$('[data-ls-color],[data-ls-k]', s).forEach(function (b) { b.classList.toggle('is-on', b === t); }); var c2 = s.querySelector('[data-ls-ct]'); if (c2) { c2.value = t.dataset.lsK; s.querySelector('[data-ls-kv]').textContent = t.dataset.lsK + 'K'; } return; }
           if ((t = e.target.closest('[data-ls-scene]'))) {
             App.$$('[data-ls-scene]', s).forEach(function (b) { b.classList.toggle('is-on', b === t); });
             post('/api/home/govee/scene', { id: d.id, name: t.dataset.lsScene }).then(function () { App.toast('<b>' + App.esc(t.dataset.lsScene) + '</b> on ' + App.esc(d.name), { icon: 'bulb', ms: 2200 }); })
@@ -62,6 +67,11 @@
           }
         });
         s.querySelector('[data-ls-level]').addEventListener('change', function (e) { set({ on: true, level: +e.target.value }); });
+        var ct = s.querySelector('[data-ls-ct]');
+        if (ct) {
+          ct.addEventListener('input', function () { s.querySelector('[data-ls-kv]').textContent = ct.value + 'K'; });
+          ct.addEventListener('change', function () { set({ on: true, kelvin: +ct.value, color: null }); App.$$('[data-ls-color],[data-ls-k]', s).forEach(function (b) { b.classList.toggle('is-on', +b.dataset.lsK === +ct.value); }); });
+        }
         var pick = s.querySelector('[data-ls-pick]');
         if (pick) pick.addEventListener('change', function (e) { set({ on: true, color: e.target.value.toUpperCase(), kelvin: null }); });
         if (isGv) fetch('/api/home/govee/scenes?id=' + encodeURIComponent(d.id), { cache: 'no-store' }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error); return j; }); })

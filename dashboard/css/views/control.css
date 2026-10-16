@@ -150,3 +150,10 @@
 .tv-row button { height: 46px; border-radius: 14px; background: var(--paper-2, #EAE4D9); display: grid; place-items: center; font-weight: 600; font-size: 15px; }
 .tv-row button:active, .tv-pw:active { transform: scale(.94); }
 .room-empty { margin: 4px 2px 10px; font-size: 17px; color: var(--mute); }
+/* Warm ↔ cool colour-temperature slider (no CSS nesting: WebView 106) */
+.ls-kv { margin-left: 8px; color: var(--ink); font-weight: 700; letter-spacing: 0; }
+.ls-ct { -webkit-appearance: none; appearance: none; width: 100%; height: 44px; background: transparent; margin: 2px 0 14px; }
+.ls-ct::-webkit-slider-runnable-track { height: 18px; border-radius: 999px; background: linear-gradient(90deg, #FF8A2A, #FFB45E 22%, #FFD9A8 45%, #FFF3E2 65%, #F4F6FF 82%, #CFDCFF); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .2); }
+.ls-ct::-webkit-slider-thumb { -webkit-appearance: none; width: 34px; height: 34px; margin-top: -8px; border-radius: 50%; background: #fff; border: 3px solid #1F1C18; box-shadow: 0 2px 8px rgba(0, 0, 0, .35); }
+.ls-ct::-moz-range-track { height: 18px; border-radius: 999px; background: linear-gradient(90deg, #FF8A2A, #FFB45E 22%, #FFD9A8 45%, #FFF3E2 65%, #F4F6FF 82%, #CFDCFF); }
+.ls-ct::-moz-range-thumb { width: 28px; height: 28px; border-radius: 50%; background: #fff; border: 3px solid #1F1C18; }
