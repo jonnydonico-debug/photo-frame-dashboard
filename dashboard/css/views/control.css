@@ -149,3 +149,4 @@
 .tv-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .tv-row button { height: 46px; border-radius: 14px; background: var(--paper-2, #EAE4D9); display: grid; place-items: center; font-weight: 600; font-size: 15px; }
 .tv-row button:active, .tv-pw:active { transform: scale(.94); }
+.room-empty { margin: 4px 2px 10px; font-size: 17px; color: var(--mute); }

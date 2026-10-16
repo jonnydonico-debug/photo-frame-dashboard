@@ -638,3 +638,4 @@ a { color: inherit; text-decoration: none; }
 .rcp-3 .fld input { width: 100%; min-width: 0; }
 .td-all { display: flex; align-items: center; gap: 4px; margin-top: 10px; color: var(--accent); font-size: 14px; font-weight: 600; }
 .tab span { white-space: nowrap; }
+.dvs-empty { margin: 0 4px 6px; font-size: 14px; color: var(--mute); }

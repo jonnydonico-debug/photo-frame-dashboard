@@ -121,7 +121,7 @@
           climate() +
           rooms.concat(list.some(function (d) { return !rooms.some(function (r) { return r.id === d.room; }); }) ? [{ id: '__other', name: 'Other' }] : []).map(function (r) {
             var ds = list.filter(function (d) { return r.id === '__other' ? !rooms.some(function (x) { return x.id === d.room; }) : d.room === r.id; });
-            return ds.length ? '<div class="sec-l">' + App.esc(r.name) + '</div><div class="dvs">' + ds.map(tile).join('') + '</div>' : '';
+            return '<div class="sec-l">' + App.esc(r.name) + '</div>' + (ds.length ? '<div class="dvs">' + ds.map(tile).join('') + '</div>' : '<p class="dvs-empty">No devices yet</p>');
           }).join('') +
           (on ? '<button class="btn btn--wide" data-alloff>' + App.icon('bulb', 18) + 'Turn off all lights</button>' : '');
       }

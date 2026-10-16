@@ -2,6 +2,14 @@
 
 Newest first. Claude Code (or you) adds an entry for every edit made directly on the Mac.
 
+## 2026-10-16 — (from GitHub) Office and Bedroom rooms
+- `app/server/server.mjs`: schema 9 adds Office and Bedroom rooms; the RGBIC TV Light Bars that
+  were on (`gv-3ee9f49fad5594ab`, the pair in the office) move to Office. The other pair stays in
+  Living Room. Bedroom is empty for now.
+- Frame Home tab (`app/js/views/control.js`, `app/css/views/control.css`) and phone Home screen
+  (`app/js/app/home.js`, `app/css/app.css`): empty rooms show "No devices yet" instead of
+  nothing.
+
 ## 2026-10-15 — (from GitHub) Lock screen: Henley Gate scenes, follows night mode by itself
 Deployed from the GitHub copy (which now includes all the Mac-side changes above).
 - Fix: while locked, the lock screen now switches to its night look at the night-mode start time

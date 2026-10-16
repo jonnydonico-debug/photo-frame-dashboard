@@ -179,7 +179,7 @@
       var list = D.devices.filter(function (d) { return d.room === r.id; });
       var on = list.filter(function (d) { return d.type === 'light' && d.on; }).length;
       return '<section class="room"><div class="room-h"><h3 class="serif">' + r.name + '</h3><span class="label" data-room-count="' + r.id + '">' + roomCount(r.id) + '</span></div>' +
-        '<div class="tiles">' + list.map(tile).join('') + '</div></section>';
+        (list.length ? '<div class="tiles">' + list.map(tile).join('') + '</div>' : '<p class="room-empty">No devices yet</p>') + '</section>';
     }).join('');
   }
 

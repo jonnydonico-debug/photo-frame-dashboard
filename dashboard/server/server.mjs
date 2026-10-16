@@ -165,6 +165,17 @@ if (state.settings.schema < 8) {
   log('Updated saved data to schema 8 (Steinheimer spelling)');
   saveSoon();
 }
+if (state.settings.schema < 9) {
+  // v9: Office and Bedroom rooms next to the living room; the TV light bars that were on (the
+  // pair in the office) move to Office. Bedroom starts empty.
+  const rooms = (state.rooms || []).slice();
+  for (const r of [{ id: 'office', name: 'Office' }, { id: 'bedroom', name: 'Bedroom' }]) if (!rooms.some(x => x.id === r.id || x.name.toLowerCase() === r.name.toLowerCase())) rooms.push(r);
+  state.rooms = rooms;
+  state.devices = (state.devices || []).map(d => d.id === 'gv-3ee9f49fad5594ab' ? Object.assign({}, d, { room: 'office' }) : d);
+  state.settings.schema = 9;
+  log('Updated saved data to schema 9 (Office and Bedroom rooms)');
+  saveSoon();
+}
 
 function saveSoon() {
   clearTimeout(saveTimer);
