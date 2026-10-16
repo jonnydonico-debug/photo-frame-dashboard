@@ -37,7 +37,7 @@
   }
   App.lightSheet = function (id) {
     var d = dev(id); if (!d) return;
-    var g = d.gv || {}, kel = g.kelvin;
+    var g = d.gv || d.caps || {}, kel = g.kelvin, isGv = d.source === 'govee';
     App.sheet('<div class="sheet-pad ls"><div class="label">' + App.esc(d.name) + '</div><h2 class="serif sheet-h" data-ls-state>' + (d.on ? (d.level || 100) + '%' : 'Off') + '</h2>' +
       '<div class="ls-row"><button class="btn' + (d.on ? '' : ' btn--solid') + '" data-ls-power>' + App.icon('bulb', 22) + (d.on ? 'Turn off' : 'Turn on') + '</button>' +
       '<input class="ls-range" type="range" min="1" max="100" value="' + (d.level || 100) + '" data-ls-level aria-label="Brightness"></div>' +
@@ -46,7 +46,7 @@
       (kel ? '<div class="label">Whites</div><div class="ls-wh">' + WHITES.filter(function (w) { return w[0] >= kel[0] - 300 && w[0] <= kel[1] + 300; }).map(function (w) {
         var k = Math.max(kel[0], Math.min(kel[1], w[0]));
         return '<button data-ls-k="' + k + '" class="' + (d.kelvin === k && !d.color ? 'is-on' : '') + '"><i style="background:' + kelvinHex(k) + '"></i>' + w[1] + '</button>'; }).join('') + '</div>' : '') +
-      '<div class="label">Govee scenes</div><div class="ls-scenes"><span class="ls-note">Loading scenes…</span></div></div>', {
+      (isGv ? '<div class="label">Govee scenes</div><div class="ls-scenes"><span class="ls-note">Loading scenes…</span></div>' : '') + '</div>', {
       cls: 'sheet--wide',
       onMount: function (s, close) {
         function set(patch) { App.setDevice(d.id, patch); s.querySelector('[data-ls-state]').textContent = d.on ? (d.level || 100) + '%' : 'Off'; }
@@ -64,7 +64,7 @@
         s.querySelector('[data-ls-level]').addEventListener('change', function (e) { set({ on: true, level: +e.target.value }); });
         var pick = s.querySelector('[data-ls-pick]');
         if (pick) pick.addEventListener('change', function (e) { set({ on: true, color: e.target.value.toUpperCase(), kelvin: null }); });
-        fetch('/api/home/govee/scenes?id=' + encodeURIComponent(d.id), { cache: 'no-store' }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error); return j; }); })
+        if (isGv) fetch('/api/home/govee/scenes?id=' + encodeURIComponent(d.id), { cache: 'no-store' }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error); return j; }); })
           .then(function (list) {
             var box = s.querySelector('.ls-scenes'); if (!box) return;
             box.innerHTML = list.length ? list.slice(0, 60).map(function (o) { return '<button class="chip" data-ls-scene="' + App.esc(o.name) + '">' + App.esc(o.name) + '</button>'; }).join('') : '<span class="ls-note">This light has no Govee scenes.</span>';
@@ -113,7 +113,7 @@
   function tile(d) {
     var pend = V.pending[d.id] ? '<i class="pend"></i>' : '';
     if (d.type === 'light') {
-      var gv = d.source === 'govee', tint = gv && d.on && d.color ? 'background:' + rgba(d.color, .5) : gv && d.on && d.kelvin ? 'background:' + rgba(kelvinHex(d.kelvin), .6) : '';
+      var gv = d.source === 'govee' || d.source === 'elgato', tint = gv && d.on && d.color ? 'background:' + rgba(d.color, .5) : gv && d.on && d.kelvin ? 'background:' + rgba(kelvinHex(d.kelvin), .6) : '';
       return '<div class="tile tile--light' + (d.on ? ' is-on' : '') + (d.online === false ? ' is-offline' : '') + '" data-dev="' + d.id + '" style="--lvl:' + (d.on ? d.level : 0) + '%">' +
         '<span class="tile-fill"' + (tint ? ' style="' + tint + '"' : '') + '></span>' + pend +
         (gv ? '<button class="tile-more" data-lightsheet="' + d.id + '" aria-label="Colour and scenes"><i style="background:' + (d.color || (d.kelvin ? kelvinHex(d.kelvin) : '#F3C77A')) + '"></i></button>' : '') +

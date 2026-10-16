@@ -20,6 +20,26 @@ export function createHouseTools(ctx) {
   const open = () => (S().groceries || []).filter(g => !g.done);
   const findItem = (q, list) => { q = String(q || '').toLowerCase().trim(); return list.find(g => g.name.toLowerCase() === q) || list.find(g => g.name.toLowerCase().includes(q) || q.includes(g.name.toLowerCase())); };
   const findDevice = q => { q = String(q || '').toLowerCase().trim(); const L = S().devices || []; return L.find(d => d.name.toLowerCase() === q) || L.find(d => d.name.toLowerCase().includes(q) || q.includes(d.name.toLowerCase())); };
+  // "key lights" → every light with that name; "office" / "free roam lights" → a whole room;
+  // "office light bars" → that room's light bars. Falls back to the closest single match.
+  function lightTargets(q) {
+    q = String(q || '').toLowerCase().trim();
+    const lights = (S().devices || []).filter(d => d.type === 'light'), rooms = S().rooms || [];
+    const sing = x => x.replace(/s\b/g, '');
+    const hasName = (d, w) => { const n = d.name.toLowerCase(); return n === w || n.includes(w) || n.includes(sing(w)) || sing(n).includes(sing(w)); };
+    const room = rooms.find(r => q.includes(r.name.toLowerCase()) || q.split(/\s+/).includes(r.id));
+    if (room) {
+      const rest = q.replace(room.name.toLowerCase(), '').replace(new RegExp('\\b' + room.id + '\\b'), '').replace(/\b(the|in|on|all|lights?)\b/g, ' ').replace(/\s+/g, ' ').trim();
+      const inRoom = lights.filter(d => d.room === room.id);
+      const hit = rest ? inRoom.filter(d => hasName(d, rest)) : inRoom;
+      if (hit.length) return hit;
+    }
+    const same = lights.filter(d => d.name.toLowerCase() === q);
+    if (same.length) return same;
+    const many = lights.filter(d => hasName(d, q));
+    if (many.length) return many;
+    return [findDevice(q)].filter(Boolean);
+  }
   const hhmm = d => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
   function summary() {
@@ -53,7 +73,7 @@ export function createHouseTools(ctx) {
     { name: 'note_add', description: 'Put a sticky note on the frame.', input_schema: { type: 'object', properties: { text: { type: 'string' }, pinned: { type: 'boolean' } }, required: ['text'] } },
     { name: 'note_done', description: 'Mark a note done (matches by text).', input_schema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } },
     { name: 'lights', description: 'List lights and other devices with their state.', input_schema: { type: 'object', properties: {} } },
-    { name: 'light_set', description: 'Change a light. Name can be partial ("lamp", "light bars"), or "all". Colour is #RRGGBB, kelvin is 2200-6500 for whites.', input_schema: { type: 'object', properties: { name: { type: 'string' }, on: { type: 'boolean' }, level: { type: 'integer', minimum: 1, maximum: 100 }, color: { type: 'string' }, kelvin: { type: 'integer' } }, required: ['name'] } },
+    { name: 'light_set', description: 'Change a light. Name can be partial ("lamp", "light bars", "key light"), a room name for every light in it ("office", "free roam"), or "all". Colour is #RRGGBB, kelvin is 2200-6500 for whites (Elgato Key Lights: white only, 2900-7000).', input_schema: { type: 'object', properties: { name: { type: 'string' }, on: { type: 'boolean' }, level: { type: 'integer', minimum: 1, maximum: 100 }, color: { type: 'string' }, kelvin: { type: 'integer' } }, required: ['name'] } },
     { name: 'light_scene', description: 'Play one of a Govee light’s built-in scenes (e.g. "Sunset"). Leave scene empty to list them.', input_schema: { type: 'object', properties: { light: { type: 'string' }, scene: { type: 'string' } }, required: ['light'] } },
     { name: 'music', description: 'Control music: play, pause, next, previous, volume (0-100), or search and play something on the current speaker.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['play', 'pause', 'next', 'previous', 'volume', 'search_and_play'] }, volume: { type: 'integer' }, query: { type: 'string' } }, required: ['action'] } },
     { name: 'apple_tv', description: 'Control the Apple TV: power on/off, a remote button, or open an app by name.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['power_on', 'power_off', 'button', 'open_app', 'list_apps'] }, button: { type: 'string', enum: ['up', 'down', 'left', 'right', 'select', 'menu', 'home', 'play_pause', 'next', 'previous', 'volume_up', 'volume_down'] }, app: { type: 'string' } }, required: ['action'] } },
@@ -130,10 +150,10 @@ export function createHouseTools(ctx) {
         commit({ notes: notes.map(x => x === n ? Object.assign({}, x, { done: true }) : x) }, 'assistant');
         return { ok: true, note: n.text };
       }
-      case 'lights': return (st.devices || []).map(d => ({ name: d.name, type: d.type, on: d.on, level: d.level, color: d.color, kelvin: d.kelvin, locked: d.locked, state: d.state, online: d.online }));
+      case 'lights': return (st.devices || []).map(d => ({ name: d.name, room: ((st.rooms || []).find(r => r.id === d.room) || {}).name, type: d.type, on: d.on, level: d.level, color: d.color, kelvin: d.kelvin, locked: d.locked, state: d.state, online: d.online, kind: d.source === 'elgato' ? 'Elgato Key Light (white only, 2900-7000K)' : d.source === 'govee' ? 'Govee' : undefined }));
       case 'light_set': {
         const all = /^(all|every|everything)/i.test(a.name || '');
-        const targets = all ? (st.devices || []).filter(d => d.type === 'light') : [findDevice(a.name)].filter(Boolean);
+        const targets = all ? (st.devices || []).filter(d => d.type === 'light') : lightTargets(a.name);
         if (!targets.length) return { error: 'No light called ' + a.name, lights: (st.devices || []).filter(d => d.type === 'light').map(d => d.name) };
         const patch = {};
         if (a.on != null) patch.on = !!a.on;
@@ -144,7 +164,7 @@ export function createHouseTools(ctx) {
         const after = before.map(d => targets.includes(d) ? Object.assign({}, d, patch) : d);
         D.apply(before, after);
         commit({ devices: after }, 'assistant');
-        return { changed: targets.map(d => d.name), linked: targets.map(d => d.source === 'govee' || !!d.shortcut) };
+        return { changed: targets.map(d => d.name), linked: targets.map(d => d.source === 'govee' || d.source === 'elgato' || !!d.shortcut) };
       }
       case 'light_scene': {
         const d = findDevice(a.light); if (!d || d.source !== 'govee') return { error: 'Scenes only work on Govee lights' };

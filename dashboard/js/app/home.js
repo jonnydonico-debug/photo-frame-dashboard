@@ -15,7 +15,7 @@
   function isOn(d) { return d.type === 'light' ? d.on : d.type === 'blind' ? d.pos > 0 : d.type === 'lock' ? !d.locked : d.type === 'garage' ? d.state === 'open' : !!d.on; }
   var ICON = { light: 'bulb', blind: 'blinds', lock: 'lock', garage: 'garage' };
   function tile(d) {
-    var tint = d.source === 'govee' && d.on ? (d.color || (d.kelvin ? kHex(d.kelvin) : '')) : '';
+    var tint = (d.source === 'govee' || d.source === 'elgato') && d.on ? (d.color || (d.kelvin ? kHex(d.kelvin) : '')) : '';
     return '<button class="dv dv--' + d.type + (isOn(d) ? ' is-on' : '') + (d.online === false ? ' is-off' : '') + '" data-dev="' + App.esc(d.id) + '"' + (tint ? ' style="--tint:' + tint + '"' : '') + '>' + App.icon(d.type === 'lock' && !d.locked ? 'unlock' : ICON[d.type] || 'bolt', 22) +
       '<b>' + App.esc(d.name) + '</b><small>' + state(d) + '</small></button>';
   }
@@ -36,13 +36,13 @@
   var WH = [[2200, 'Candle'], [2700, 'Warm'], [4000, 'Neutral'], [5500, 'Day'], [6500, 'Cool']];
   function kHex(k) { return k <= 2900 ? '#FFC27A' : k <= 3600 ? '#FFD9A8' : k <= 4600 ? '#FFEBD2' : k <= 5600 ? '#FFF5EA' : '#F2F4FF'; }
   function goveeSheet(d) {
-    var g = d.gv || {}, kel = g.kelvin;
+    var g = d.gv || d.caps || {}, kel = g.kelvin, isGv = d.source === 'govee';
     App.sheet('<div class="sh-pad"><h2 class="sh-h">' + App.esc(d.name) + '</h2><p class="sh-p" data-v>' + state(d) + (d.online === false ? ' · offline' : '') + '</p>' +
       '<div class="lt-row"><button class="btn' + (d.on ? '' : ' btn--solid') + '" data-pw>' + (d.on ? 'Off' : 'On') + '</button><input class="big-range" type="range" min="1" max="100" value="' + (d.level || 100) + '" aria-label="Brightness"></div>' +
       (g.color ? '<div class="sec-l">Colour</div><div class="sw">' + SW.map(function (c) { return '<button data-c="' + c + '" class="' + (d.color === c ? 'is-on' : '') + '" style="background:' + c + '"></button>'; }).join('') +
         '<label class="sw-any"><input type="color" value="' + (d.color || '#FFB020') + '"></label></div>' : '') +
-      (kel ? '<div class="sec-l">Whites</div><div class="chips">' + WH.map(function (w) { var k = Math.max(kel[0], Math.min(kel[1], w[0])); return '<button class="chip' + (d.kelvin === k && !d.color ? ' is-on' : '') + '" data-k="' + k + '"><i class="wh" style="background:' + kHex(k) + '"></i>' + w[1] + '</button>'; }).join('') + '</div>' : '') +
-      '<div class="sec-l">Govee scenes</div><div class="chips sc-list"><span class="muted">Loading…</span></div></div>', {
+      (kel ? '<div class="sec-l">Whites</div><div class="chips">' + WH.filter(function (w) { return w[0] >= kel[0] - 300 && w[0] <= kel[1] + 300; }).map(function (w) { var k = Math.max(kel[0], Math.min(kel[1], w[0])); return '<button class="chip' + (d.kelvin === k && !d.color ? ' is-on' : '') + '" data-k="' + k + '"><i class="wh" style="background:' + kHex(k) + '"></i>' + w[1] + '</button>'; }).join('') + '</div>' : '') +
+      (isGv ? '<div class="sec-l">Govee scenes</div><div class="chips sc-list"><span class="muted">Loading…</span></div>' : '') + '</div>', {
       tall: true,
       onMount: function (s, close) {
         function apply(patch) { set(d.id, patch); var v = s.querySelector('[data-v]'); if (v) v.textContent = state(d); }
@@ -60,7 +60,7 @@
         });
         s.querySelector('.big-range').addEventListener('change', function (e) { apply({ on: true, level: +e.target.value }); });
         var pick = s.querySelector('.sw-any input'); if (pick) pick.addEventListener('change', function (e) { apply({ on: true, color: e.target.value.toUpperCase(), kelvin: null }); mark(null); });
-        App.get('/api/home/govee/scenes?id=' + encodeURIComponent(d.id)).then(function (list) {
+        if (isGv) App.get('/api/home/govee/scenes?id=' + encodeURIComponent(d.id)).then(function (list) {
           var box = s.querySelector('.sc-list'); if (!box) return;
           box.innerHTML = list.length ? list.slice(0, 80).map(function (o) { return '<button class="chip" data-scene-n="' + App.esc(o.name) + '">' + App.esc(o.name) + '</button>'; }).join('') : '<span class="muted">No scenes for this light.</span>';
         }).catch(function () { var box = s.querySelector('.sc-list'); if (box) box.innerHTML = '<span class="muted">Scenes aren’t available right now.</span>'; });
@@ -69,7 +69,7 @@
     });
   }
   function open(d) {
-    if (d.source === 'govee') return goveeSheet(d);
+    if (d.source === 'govee' || d.source === 'elgato') return goveeSheet(d);
     if (d.type === 'light' || d.type === 'blind') {
       var v = d.type === 'light' ? (d.on ? d.level || 100 : 0) : d.pos;
       App.sheet('<div class="sh-pad"><h2 class="sh-h">' + App.esc(d.name) + '</h2><p class="sh-p" data-v>' + state(d) + '</p>' +

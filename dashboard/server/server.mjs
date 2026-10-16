@@ -12,6 +12,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createIntegrations } from './integrations.mjs';
 import { createGovee } from './govee.mjs';
+import { createElgato } from './elgato.mjs';
 import { createAppleTV } from './appletv.mjs';
 import { MODELS, testKey, claudeUsage, setUsageSink, createHouseTools } from './assistant.mjs';
 import { createRecipes } from './recipes.mjs';
@@ -283,6 +284,7 @@ function commit(patch, client) {
 }
 
 const GV = createGovee({ getState: () => state, commit: (p, c) => commit(p, c), secrets, saveSecrets: () => saveSecrets(), log });
+const EL = createElgato({ getState: () => state, commit: (p, c) => commit(p, c), secrets, saveSecrets: () => saveSecrets(), log });
 const TV = createAppleTV({ dataDir: DATA, here: HERE, commit: (p, c) => commit(p, c), secrets, saveSecrets: () => saveSecrets(), log });
 const X = createIntegrations({ getState: () => state, commit, secrets, saveSecrets: () => saveSecrets(), log, dataDir: DATA, photosDir: PHOTOS });
 // Agents (iMessage front desk, Plex, and any you create in Admin → Agents)
@@ -368,6 +370,7 @@ function fireDeviceShortcuts(oldList, newList) {
   for (const d of newList || []) {
     const o = byId[d.id];
     if (o && d.source === 'govee') { if (DEVICE_STATE_FIELDS.some(f => o[f] !== d[f])) GV.apply(d, o); continue; }
+    if (o && d.source === 'elgato') { if (DEVICE_STATE_FIELDS.some(f => o[f] !== d[f])) EL.apply(d, o); continue; }
     if (!o || !d.shortcut) continue;
     if (!DEVICE_STATE_FIELDS.some(f => o[f] !== d[f])) continue;
     const input = deviceInput(d, o);
@@ -714,6 +717,7 @@ async function api(req, res, url) {
         tomtom: X.tomtomStatus(),
         calendars: CAL.list(),
         govee: GV.status(),
+        elgato: EL.status(),
         assistant: (() => { const a = secrets.assistant || {}; return { enabled: !!a.enabled, hasKey: !!a.apiKey, models: MODELS, allow: a.allow || [], status: IM.status(), usage: claudeUsage(), frontDesk: AG.frontDesk() && AG.frontDesk().name }; })(),
         tv: TV.status(),
         spotify: { clientId: (secrets.spotify || {}).clientId || '', hasSecret: !!(secrets.spotify || {}).clientSecret, connected: !!(secrets.spotify || {}).refreshToken, status: X.spotifyStatus(), redirect: spotifyRedirect(req) },
@@ -793,6 +797,14 @@ async function api(req, res, url) {
     if (sub.startsWith('tv/')) {
       try { return await TV.admin(sub.slice(3), req, res, readBody, send); }
       catch (e) { return send(res, e.status && e.status < 500 ? e.status : 409, { error: e.message }); }
+    }
+    if (sub === 'elgato' && m === 'POST') {
+      const b = await readBody(req);
+      try {
+        if (b.add) return send(res, 200, Object.assign(await EL.addHost(b.add), EL.status()));
+        if (b.remove) { EL.removeHost(String(b.remove)); return send(res, 200, EL.status()); }
+        await EL.discover(); return send(res, 200, EL.status());
+      } catch (e) { return send(res, e.status && e.status < 500 ? e.status : 409, { error: e.message }); }
     }
     if (sub === 'govee' && m === 'POST') {
       const b = await readBody(req);
@@ -1039,5 +1051,5 @@ server.listen(PORT, HOST, () => {
   log('  Dashboard:  http://' + os.hostname().replace(/\.local$/, '') + '.local:' + PORT + '/');
   addrs.forEach(a => log('              http://' + a + ':' + PORT + '/'));
   log('  Admin:      /admin');
-  refreshWeather(); refreshPlex(); X.start(); GV.start(); TV.start(); IM.start(); AG.startSchedules(); CAL.start(); COSTS.publish(); setInterval(() => COSTS.publish(), 30 * 60000);
+  refreshWeather(); refreshPlex(); X.start(); GV.start(); EL.start(); TV.start(); IM.start(); AG.startSchedules(); CAL.start(); COSTS.publish(); setInterval(() => COSTS.publish(), 30 * 60000);
 });

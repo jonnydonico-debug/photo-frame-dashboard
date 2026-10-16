@@ -470,6 +470,19 @@ function goveeBlock() {
       ${G.set ? '<p class="intro small">Rename a light or move it to another room in Devices below.</p>' : ''}
     </section>`;
 }
+function elgatoBlock() {
+  const E = cfg.elgato || { hosts: [], lights: [] }, lights = (S.devices || []).filter(d => d.source === 'elgato');
+  return `<section class="block"><div class="block-h"><h2 class="serif">Elgato Key Lights</h2><span class="muted">${lights.length ? lights.length + (lights.length === 1 ? ' light' : ' lights') : E.busy ? 'searching…' : 'none found'}</span></div>
+      <p class="intro">Found automatically on your Wi-Fi (no account needed): on/off, brightness and warm-to-cool white, in the <b>Free Roam</b> section. Set them up on Wi-Fi with Elgato’s Control Center app first.</p>
+      ${E.error && !lights.length ? `<p class="warn small">${esc(E.error)}</p>` : ''}
+      ${lights.length ? '<ul class="status">' + lights.map(d => `<li><b>${esc(d.name)}</b><span>${d.online === false ? 'offline' : d.on ? 'on · ' + (d.level || 100) + '% · ' + (d.kelvin || '') + 'K' : 'off'} <span class="muted small">${esc((d.el && d.el.host) || '')}</span></span></li>`).join('') + '</ul>' : ''}
+      <div class="row wrap"><button class="btn btn--s btn--solid" data-elfind>Look for Key Lights</button></div>
+      <p class="intro small" style="margin-top:10px">Not found? Add one by its IP address (shown in Control Center → the light’s settings):</p>
+      <div class="row"><input id="el-ip" placeholder="192.168.0.50" autocomplete="off"><button class="btn" data-eladd>Add</button></div>
+      ${(E.hosts || []).length ? '<p class="intro small">Added by IP: ' + E.hosts.map(h => `${esc(h)} <button class="linkbtn small" data-elrm="${esc(h)}">remove</button>`).join(' · ') + '</p>' : ''}
+      <p class="intro small">Rename a light or move it to another room in Devices below.</p>
+    </section>`;
+}
 function tvBlock() {
   const T = cfg.tv || { setup: { state: 'missing' } }, live = S.tv || {}, st = T.setup || {};
   let body = '';
@@ -496,7 +509,7 @@ function home() {
   const linked = (S.devices || []).filter(d => d.shortcut).length;
   const C = S.climate || {};
   if (cfg.tv && cfg.tv.setup && cfg.tv.setup.state === 'installing') setTimeout(async () => { if (section !== 'home') return; cfg = await call('/api/admin/config'); rerenderSoon(); }, 3000);
-  return goveeBlock() + tvBlock() + `<section class="block guide">
+  return goveeBlock() + elgatoBlock() + tvBlock() + `<section class="block guide">
       <div class="block-h"><h2 class="serif">How HomeKit control works</h2><span class="muted">${linked}/${(S.devices || []).length} linked</span></div>
       <ol>
         <li>On the Mac mini, open <b>Shortcuts</b> and make one shortcut per light (e.g. “Kitchen Pendants”). Its first action receives <b>Text</b> input.</li>
@@ -850,6 +863,9 @@ document.addEventListener('click', async e => {
       catch (e2) { flash(e2.message, true); }
       cfg = await call('/api/admin/config'); return reload();
     }
+    if (d.elfind != null) { flash('Looking for Key Lights…'); try { const r = await call('/api/admin/elgato', { method: 'POST', body: {} }); flash(r.found ? 'Found ' + r.found + (r.found === 1 ? ' Key Light' : ' Key Lights') : (r.error || 'None found'), !r.found); } catch (e2) { flash(e2.message, true); } return reload(); }
+    if (d.eladd != null) { const ip = $('#el-ip').value.trim(); if (!ip) return flash('Type the light’s IP address', true); try { const r = await call('/api/admin/elgato', { method: 'POST', body: { add: ip } }); flash(r.found ? 'Found ' + r.found + ' Key Light' + (r.found === 1 ? '' : 's') : 'Saved, but it didn’t answer', !r.found); } catch (e2) { flash(e2.message, true); } return reload(); }
+    if (d.elrm) { await call('/api/admin/elgato', { method: 'POST', body: { remove: d.elrm } }); return reload(); }
     if (d.gvfind != null) { try { const r = await call('/api/admin/govee/refresh', { method: 'POST' }); flash(r.lights + ' Govee lights'); } catch (e2) { flash(e2.message, true); } return reload(); }
     if (d.gvoff != null) { if (!confirm('Remove the Govee key? Govee lights disappear from the dashboard.')) return; await call('/api/admin/govee', { method: 'POST', body: { clear: true } }); flash('Govee removed'); return reload(); }
     if (d.tvinstall != null) { await call('/api/admin/tv/install', { method: 'POST' }); cfg = await call('/api/admin/config'); return render(); }

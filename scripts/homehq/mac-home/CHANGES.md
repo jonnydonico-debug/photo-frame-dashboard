@@ -2,6 +2,19 @@
 
 Newest first. Claude Code (or you) adds an entry for every edit made directly on the Mac.
 
+## 2026-10-16 — (from GitHub) Elgato Key Lights in a "Free Roam" section
+- `app/server/elgato.mjs` (new): finds Key Lights on the Wi-Fi with Bonjour (`dns-sd -B _elg._tcp`)
+  or by IP (Admin), reads/sets them over their local API (port 9123, `/elgato/lights`): on/off,
+  brightness 3–100, colour temperature 2900–7000 K. Polls every 15 s, re-searches every 10 min.
+  Devices are `source: 'elgato'`, `el.host`, `caps.kelvin`, in room `freeroam` ("Free Roam").
+- `app/server/server.mjs`: wiring, device changes routed to the lights, `POST /api/admin/elgato`
+  (search / add or remove an IP).
+- `app/server/assistant.mjs`: `light_set` can target several lights ("key lights", a room like
+  "office" or "free roam", "office light bars"); `lights` lists each light's room.
+- Frame `app/js/views/control.js`, phone `app/js/app/home.js`: Key Lights get the light sheet
+  (brightness + whites, no colours/scenes). Admin `app/js/admin.js`: "Elgato Key Lights" block in
+  Lights & Home.
+
 ## 2026-10-16 — (from GitHub) Office and Bedroom rooms
 - `app/server/server.mjs`: schema 9 adds Office and Bedroom rooms; the RGBIC TV Light Bars that
   were on (`gv-3ee9f49fad5594ab`, the pair in the office) move to Office. The other pair stays in
