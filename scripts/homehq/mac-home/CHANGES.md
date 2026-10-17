@@ -2,6 +2,11 @@
 
 Newest first. Claude Code (or you) adds an entry for every edit made directly on the Mac.
 
+## 2026-10-16 — (from GitHub) Log music button presses
+- `app/server/server.mjs`, `app/server/integrations.mjs` (`musicDebug`): every `/api/music`
+  command is logged with the result (ok via Sonos/Spotify, or the error) plus what's playing, the
+  picked speaker and the Sonos rooms found. Refused (not-home) requests are logged too.
+
 ## 2026-10-16 — (from GitHub) Lock-screen video: light enough for the frame tablet
 The frame (Android 6 "YS01", WebView 106) played the 1280x800 scene for ~1 h, then its hardware
 decoder failed (PIPELINE_ERROR_DECODE), the screen froze and the app crashed.

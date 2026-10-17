@@ -568,6 +568,8 @@ export function createIntegrations(ctx) {
 
   return {
     start, geocode, routeBoth, refreshCommute, trafficTile, setTomtomKey, tomtomStatus: () => ({ set: !!secrets.tomtomKey, status: ttStatus }), refreshBart, syncAlbum, albumStatus: () => albumStatus, albumToken, resolveAlbumLink,
+    // For the server log: what the music controls are aimed at right now
+    musicDebug: () => { const d = spState.device; const t = secrets.musicTarget; return 'playing ' + (d ? d.name + (d.restricted ? ' (Sonos/restricted)' : '') : 'nowhere') + ' · picked ' + (t ? t.name + (t.sonos ? ' (Sonos)' : '') : 'none') + ' · sonos rooms ' + (sonos.rooms().map(r => r.name).join('/') || 'none') + ' · ' + (spState.playing ? 'playing' : 'paused') + (spState.title ? ' "' + String(spState.title).slice(0, 40) + '"' : ''); },
     sonos, spotifyAuthUrl, spotifyCallback, spotifyCommand, spotifyLibrary, spotifySearch, spotifyItems, spotifyStatus: () => spStatus,
     spotifyDisconnect() { secrets.spotify = { clientId: SP().clientId, clientSecret: SP().clientSecret }; saveSecrets(); clearInterval(spTimer); spState = { connected: false }; commit({ music: { connected: false } }, 'server'); },
     BART_STATIONS

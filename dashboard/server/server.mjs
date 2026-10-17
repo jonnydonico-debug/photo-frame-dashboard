@@ -592,7 +592,7 @@ async function api(req, res, url) {
 
   // ---------------------------------------------------------------- map + music (home network or admin)
   if (p.startsWith('/api/geo/') || p.startsWith('/api/music')) {
-    if (!admin && !home) return send(res, 403, { error: 'Sign in at /admin to use this from outside the house' });
+    if (!admin && !home) { if (p === '/api/music') log('music: refused (screen not recognised as home)', clientIp(req)); return send(res, 403, { error: 'Sign in at /admin to use this from outside the house' }); }
     const st = state.settings;
     if (p === '/api/geo/search') {
       try { return send(res, 200, await X.geocode(url.searchParams.get('q') || '', st.lat != null ? { lat: st.lat, lon: st.lon } : null)); }
@@ -613,7 +613,12 @@ async function api(req, res, url) {
       return send(res, 200, Object.assign({ from: { lat: st.lat, lon: st.lon } }, await X.routeBoth({ lat: st.lat, lon: st.lon }, to)));
     }
     try {
-      if (p === '/api/music' && m === 'POST') return send(res, 200, await X.spotifyCommand(await readBody(req)));
+      if (p === '/api/music' && m === 'POST') {
+        // Log every button press with where it went, so "the buttons do nothing" can be traced
+        const b = await readBody(req), what = b.action + (b.uri || b.uris ? ' (something)' : '') + (b.device ? ' → ' + String(b.name || b.device).slice(0, 30) : '');
+        try { const r = await X.spotifyCommand(b); log('music:', what, '→ ok via', (r && r.via) || 'spotify', '|', X.musicDebug()); return send(res, 200, r); }
+        catch (e) { log('music:', what, '→ FAILED:', e.message, '|', X.musicDebug()); throw e; }
+      }
       if (p === '/api/music/library') return send(res, 200, await X.spotifyLibrary());
       if (p === '/api/music/search') return send(res, 200, await X.spotifySearch(url.searchParams.get('q') || ''));
       if (p === '/api/music/items') return send(res, 200, await X.spotifyItems(url.searchParams.get('uri') || ''));
