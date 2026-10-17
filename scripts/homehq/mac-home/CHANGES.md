@@ -2,6 +2,21 @@
 
 Newest first. Claude Code (or you) adds an entry for every edit made directly on the Mac.
 
+## 2026-10-16 — (from GitHub) Live cameras (Tapo C121 / RTSP)
+- `app/server/cameras.mjs` (new): reads each camera's RTSP stream (Tapo: Camera Account,
+  `rtsp://user:pass@IP:554/stream2` standard / `stream1` HD) with ffmpeg and serves MJPEG at
+  `/api/home/camera/<id>/live` plus stills at `/snapshot.jpg` (home network or signed in only).
+  One ffmpeg per camera shared by all viewers, stopped 15 s after the last one leaves; restarts
+  with back-off if the camera drops. ffmpeg: system copy if present, else a one-time download of
+  the static arm64 build (eugeneware/ffmpeg-static b6.1.1, SHA-256 checked) into `data/ffmpeg/`.
+  Camera accounts live in secrets.json; `state.cameras` only has id/name/live.
+- `app/server/server.mjs`: camera routes, `POST /api/admin/cameras` (install / add with a test
+  snapshot / remove / rename).
+- Frame `app/js/views/control.js` + css: camera tiles refresh their still every 20 s; tap → live
+  full-screen (closing ends the stream). `app/js/app.js`: no auto-lock while watching.
+- Phone `app/js/app/home.js` + `app/css/app.css`: Cameras section with stills and a live sheet.
+- Admin `app/js/admin.js`: Cameras block in Lights & Home (setup button, Tapo steps, add/remove).
+
 ## 2026-10-16 — (from GitHub) Sonos: Play/Skip work after a Spotify-app session ends
 Log showed: `play → FAILED: Sonos said no (Play 701)` while the Sonos still showed the paused
 song. 701 = nothing to resume (the Spotify Connect session started from the phone had ended, or

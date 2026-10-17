@@ -157,3 +157,5 @@
 .ls-ct::-webkit-slider-thumb { -webkit-appearance: none; width: 34px; height: 34px; margin-top: -8px; border-radius: 50%; background: #fff; border: 3px solid #1F1C18; box-shadow: 0 2px 8px rgba(0, 0, 0, .35); }
 .ls-ct::-moz-range-track { height: 18px; border-radius: 999px; background: linear-gradient(90deg, #FF8A2A, #FFB45E 22%, #FFD9A8 45%, #FFF3E2 65%, #F4F6FF 82%, #CFDCFF); }
 .ls-ct::-moz-range-thumb { width: 28px; height: 28px; border-radius: 50%; background: #fff; border: 3px solid #1F1C18; }
+/* Live camera: the MJPEG stream sits over the still, which shows while it connects */
+.cam-big .cam-live { position: absolute; top: 0; left: 0; width: 100%; height: 100%; aspect-ratio: auto; background: transparent; }

@@ -483,6 +483,25 @@ function elgatoBlock() {
       <p class="intro small">Rename a light or move it to another room in Devices below.</p>
     </section>`;
 }
+function camerasBlock() {
+  const st = cfg.cameraSetup || { state: 'missing' }, L = cfg.cameraList || [];
+  const ready = st.state === 'ready';
+  return `<section class="block" id="cams"><div class="block-h"><h2 class="serif">Cameras</h2><span class="muted">${L.length ? L.length + (L.length === 1 ? ' camera' : ' cameras') : 'none'}</span></div>
+      <p class="intro">Live video from Tapo (and other RTSP) cameras on your Wi-Fi, on the frame’s Home tab and the phone app’s Home screen. The Mac reads the camera directly; only home screens and signed-in phones can watch.</p>
+      ${ready ? '' : `<div class="row wrap"><button class="btn btn--solid" data-camsetup ${st.state === 'installing' ? 'disabled' : ''}>${st.state === 'installing' ? esc(st.step || 'Setting up…') : 'Set up video (one-time, ~45 MB)'}</button></div>
+        ${st.error ? `<p class="warn small">${esc(st.error)}</p>` : '<p class="intro small">Downloads ffmpeg, the video tool the Mac uses to read the camera (checked against its published checksum).</p>'}`}
+      ${L.length ? '<ul class="status">' + L.map(c => `<li><b>${esc(c.name)}</b><span>${esc(c.host)} · ${c.quality === 'hd' ? 'HD' : 'Standard'} <button class="linkbtn small" data-camrm="${esc(c.id)}">remove</button></span></li>`).join('') + '</ul>' : ''}
+      ${ready ? `<details ${L.length ? '' : 'open'}><summary class="f-l" style="cursor:pointer">Add a camera</summary>
+        <ol class="steps"><li>In the <b>Tapo</b> app: tap the camera → ⚙︎ → <b>Advanced Settings</b> → <b>Camera Account</b>, and create a user name and password (this is separate from your TP-Link login).</li>
+        <li>Still in its settings, open <b>Device Info</b> and note the <b>IP address</b>. (Reserving that address in your router stops it changing.)</li></ol>
+        <div class="grid2"><label class="f"><span class="f-l">Name</span><input id="cam-name" placeholder="Front door" maxlength="30"></label>
+        <label class="f"><span class="f-l">IP address</span><input id="cam-host" placeholder="192.168.0.60" autocomplete="off"></label></div>
+        <div class="grid2"><label class="f"><span class="f-l">Camera Account user name</span><input id="cam-user" autocomplete="off" data-1p-ignore data-lpignore="true"></label>
+        <label class="f"><span class="f-l">Camera Account password</span><input id="cam-pass" type="password" autocomplete="new-password" data-1p-ignore data-lpignore="true"></label></div>
+        <label class="f"><span class="f-l">Live quality</span><select id="cam-q"><option value="sd">Standard (smooth on the frame)</option><option value="hd">HD (sharper, more for the frame to handle)</option></select></label>
+        <div class="row" style="margin-top:8px"><button class="btn btn--solid" data-camadd>Test &amp; add</button></div></details>` : ''}
+    </section>`;
+}
 function tvBlock() {
   const T = cfg.tv || { setup: { state: 'missing' } }, live = S.tv || {}, st = T.setup || {};
   let body = '';
@@ -509,7 +528,7 @@ function home() {
   const linked = (S.devices || []).filter(d => d.shortcut).length;
   const C = S.climate || {};
   if (cfg.tv && cfg.tv.setup && cfg.tv.setup.state === 'installing') setTimeout(async () => { if (section !== 'home') return; cfg = await call('/api/admin/config'); rerenderSoon(); }, 3000);
-  return goveeBlock() + elgatoBlock() + tvBlock() + `<section class="block guide">
+  return goveeBlock() + elgatoBlock() + camerasBlock() + tvBlock() + `<section class="block guide">
       <div class="block-h"><h2 class="serif">How HomeKit control works</h2><span class="muted">${linked}/${(S.devices || []).length} linked</span></div>
       <ol>
         <li>On the Mac mini, open <b>Shortcuts</b> and make one shortcut per light (e.g. “Kitchen Pendants”). Its first action receives <b>Text</b> input.</li>
@@ -863,6 +882,19 @@ document.addEventListener('click', async e => {
       catch (e2) { flash(e2.message, true); }
       cfg = await call('/api/admin/config'); return reload();
     }
+    if (d.camsetup != null) {
+      try { await call('/api/admin/cameras', { method: 'POST', body: { install: true } }); flash('Downloading the video tool…'); } catch (e2) { flash(e2.message, true); }
+      const poll = setInterval(async () => { const c = await call('/api/admin/config').catch(() => null); if (!c) return; cfg.cameraSetup = c.cameraSetup; if (section === 'home') rerenderSoon(); if (c.cameraSetup.state !== 'installing') { clearInterval(poll); flash(c.cameraSetup.state === 'ready' ? 'Video tool ready' : (c.cameraSetup.error || 'Setup failed'), c.cameraSetup.state !== 'ready'); } }, 3000);
+      return reload();
+    }
+    if (d.camadd != null) {
+      const body = { name: $('#cam-name').value.trim() || 'Camera', host: $('#cam-host').value.trim(), user: $('#cam-user').value.trim(), pass: $('#cam-pass').value, quality: $('#cam-q').value };
+      if (!body.host || !body.user || !body.pass) return flash('Fill in the IP address and the Camera Account', true);
+      flash('Checking the camera…');
+      try { await call('/api/admin/cameras', { method: 'POST', body: { add: body } }); flash('Camera added'); } catch (e2) { return flash(e2.message, true); }
+      return reload();
+    }
+    if (d.camrm) { if (!confirm('Remove this camera?')) return; await call('/api/admin/cameras', { method: 'POST', body: { remove: d.camrm } }); return reload(); }
     if (d.elfind != null) { flash('Looking for Key Lights…'); try { const r = await call('/api/admin/elgato', { method: 'POST', body: {} }); flash(r.found ? 'Found ' + r.found + (r.found === 1 ? ' Key Light' : ' Key Lights') : (r.error || 'None found'), !r.found); } catch (e2) { flash(e2.message, true); } return reload(); }
     if (d.eladd != null) { const ip = $('#el-ip').value.trim(); if (!ip) return flash('Type the light’s IP address', true); try { const r = await call('/api/admin/elgato', { method: 'POST', body: { add: ip } }); flash(r.found ? 'Found ' + r.found + ' Key Light' + (r.found === 1 ? '' : 's') : 'Saved, but it didn’t answer', !r.found); } catch (e2) { flash(e2.message, true); } return reload(); }
     if (d.elrm) { await call('/api/admin/elgato', { method: 'POST', body: { remove: d.elrm } }); return reload(); }

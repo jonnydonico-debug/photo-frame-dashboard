@@ -206,9 +206,12 @@
       }).join('') + '</div>';
   }
 
+  // Real cameras (c.live) are served by the Mac: a still every 20 s on the tile, live video on tap
+  function camSnap(c) { return '/api/home/camera/' + encodeURIComponent(c.id) + '/snapshot.jpg?t=' + Date.now(); }
   function cams() {
-    return '<div class="label">Cameras · snapshots every 20s</div><div class="cams">' + D.cameras.slice(0, 2).map(function (c) {
-      return '<button class="cam" data-cam="' + c.id + '"><img src="' + (c.url || App.img(c.seed, 400, 250)) + '" alt=""><span class="cam-name">' + c.name + '</span><span class="cam-age">' + V.camAge + 's ago</span></button>';
+    var live = D.cameras.some(function (c) { return c.live; });
+    return '<div class="label">Cameras · ' + (live ? 'tap for live video' : 'snapshots every 20s') + '</div><div class="cams">' + D.cameras.slice(0, 2).map(function (c) {
+      return '<button class="cam" data-cam="' + c.id + '"><img ' + (c.live ? 'data-camsnap="' + App.esc(c.id) + '" ' : '') + 'src="' + (c.live ? camSnap(c) : (c.url || App.img(c.seed, 400, 250))) + '" alt=""><span class="cam-name">' + App.esc(c.name) + '</span><span class="cam-age">' + V.camAge + 's ago</span></button>';
     }).join('') + '</div>';
   }
 
@@ -365,7 +368,21 @@
   };
 
   App.cameraSheet = function (c) {
-    App.sheet('<div class="cam-big"><img src="' + (c.url || App.img(c.seed, 1200, 750)) + '" alt=""><div class="cam-big-bar"><span class="tk-live"><i></i>' + c.name + '</span><span class="label label--light">Snapshot · ' + V.camAge + 's ago</span></div></div>', { cls: 'sheet--cam' });
+    if (!c) return;
+    if (!c.live) return App.sheet('<div class="cam-big"><img src="' + (c.url || App.img(c.seed, 1200, 750)) + '" alt=""><div class="cam-big-bar"><span class="tk-live"><i></i>' + c.name + '</span><span class="label label--light">Snapshot · ' + V.camAge + 's ago</span></div></div>', { cls: 'sheet--cam' });
+    // Live: the still shows instantly underneath while the video stream connects
+    App.sheet('<div class="cam-big"><img class="cam-still" src="' + camSnap(c) + '" alt=""><img class="cam-live" src="/api/home/camera/' + encodeURIComponent(c.id) + '/live?t=' + Date.now() + '" alt="">' +
+      '<div class="cam-big-bar"><span class="tk-live"><i></i>' + App.esc(c.name) + '</span><span class="label label--light" data-camstate>Connecting…</span></div></div>', {
+      cls: 'sheet--cam',
+      onMount: function (s) {
+        var v = s.querySelector('.cam-live');
+        v.addEventListener('load', function () { var st = s.querySelector('[data-camstate]'); if (st) st.textContent = 'Live'; });
+        v.addEventListener('error', function () { var st = s.querySelector('[data-camstate]'); if (st) st.textContent = 'Live video unavailable · showing a snapshot'; v.style.display = 'none'; });
+        App.resetIdle();
+      },
+      // Closing the sheet ends the stream (the Mac stops the camera feed when nobody watches)
+      onClose: function () { var v = document.querySelector('.cam-live'); if (v) { v.src = ''; v.removeAttribute('src'); } }
+    });
   };
 
   function listSheet(kind) {
@@ -459,6 +476,7 @@
     V.camTimer = setInterval(function () {
       V.camAge = V.camAge >= 20 ? 1 : V.camAge + 1;
       App.$$('.cam-age', V.el).forEach(function (a) { a.textContent = V.camAge + 's ago'; });
+      if (V.camAge === 1) App.$$('[data-camsnap]', V.el).forEach(function (im) { im.src = '/api/home/camera/' + encodeURIComponent(im.dataset.camsnap) + '/snapshot.jpg?t=' + Date.now(); });
     }, 1000);
   }
 

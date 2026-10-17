@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { createIntegrations } from './integrations.mjs';
 import { createGovee } from './govee.mjs';
 import { createElgato } from './elgato.mjs';
+import { createCameras } from './cameras.mjs';
 import { createAppleTV } from './appletv.mjs';
 import { MODELS, testKey, claudeUsage, setUsageSink, createHouseTools } from './assistant.mjs';
 import { createRecipes } from './recipes.mjs';
@@ -284,6 +285,7 @@ function commit(patch, client) {
 }
 
 const GV = createGovee({ getState: () => state, commit: (p, c) => commit(p, c), secrets, saveSecrets: () => saveSecrets(), log });
+const CAM = createCameras({ dataDir: DATA, secrets, saveSecrets: () => saveSecrets(), commit: (p, c) => commit(p, c), log });
 const EL = createElgato({ getState: () => state, commit: (p, c) => commit(p, c), secrets, saveSecrets: () => saveSecrets(), log });
 const TV = createAppleTV({ dataDir: DATA, here: HERE, commit: (p, c) => commit(p, c), secrets, saveSecrets: () => saveSecrets(), log });
 const X = createIntegrations({ getState: () => state, commit, secrets, saveSecrets: () => saveSecrets(), log, dataDir: DATA, photosDir: PHOTOS });
@@ -566,6 +568,14 @@ async function api(req, res, url) {
       if (p === '/api/home/govee/scenes') return send(res, 200, await GV.scenes(url.searchParams.get('id') || ''));
       if (p === '/api/home/govee/scene' && m === 'POST') { const b = await readBody(req); return send(res, 200, await GV.playScene(String(b.id || ''), String(b.name || ''))); }
       if (p.startsWith('/api/home/tv')) return await TV.route(req, res, p, m, url, readBody, send);
+      // Cameras: live MJPEG stream and still snapshots (home network or signed in only)
+      const cm = p.match(/^\/api\/home\/camera\/([\w-]+)\/(live|snapshot\.jpg)$/);
+      if (cm) {
+        if (cm[2] === 'live') return CAM.live(req, res, cm[1], url.searchParams.get('q') || CAM.quality(cm[1]));
+        const buf = await CAM.snapshot(cm[1]);
+        res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Content-Length': buf.length, 'Cache-Control': 'no-store' });
+        return res.end(buf);
+      }
       if (p === '/api/home/lockdiag' && m === 'POST') {
         // The frame reports lock-screen video trouble here so it shows up in logs/server.log
         const b = await readBody(req), k = String(b.event || '').slice(0, 30);
@@ -731,6 +741,7 @@ async function api(req, res, url) {
         calendars: CAL.list(),
         govee: GV.status(),
         elgato: EL.status(),
+        cameraSetup: CAM.status(), cameraList: CAM.list(),
         assistant: (() => { const a = secrets.assistant || {}; return { enabled: !!a.enabled, hasKey: !!a.apiKey, models: MODELS, allow: a.allow || [], status: IM.status(), usage: claudeUsage(), frontDesk: AG.frontDesk() && AG.frontDesk().name }; })(),
         tv: TV.status(),
         spotify: { clientId: (secrets.spotify || {}).clientId || '', hasSecret: !!(secrets.spotify || {}).clientSecret, connected: !!(secrets.spotify || {}).refreshToken, status: X.spotifyStatus(), redirect: spotifyRedirect(req) },
@@ -810,6 +821,16 @@ async function api(req, res, url) {
     if (sub.startsWith('tv/')) {
       try { return await TV.admin(sub.slice(3), req, res, readBody, send); }
       catch (e) { return send(res, e.status && e.status < 500 ? e.status : 409, { error: e.message }); }
+    }
+    if (sub === 'cameras' && m === 'POST') {
+      const b = await readBody(req);
+      try {
+        if (b.install) return send(res, 200, { setup: await CAM.install() });
+        if (b.add) return send(res, 200, Object.assign(await CAM.add(b.add), { cameras: CAM.list() }));
+        if (b.remove) { CAM.remove(String(b.remove)); return send(res, 200, { cameras: CAM.list() }); }
+        if (b.rename) { CAM.rename(String(b.rename.id), b.rename.name); return send(res, 200, { cameras: CAM.list() }); }
+        return send(res, 200, { setup: CAM.status(), cameras: CAM.list() });
+      } catch (e) { return send(res, e.status && e.status < 500 ? e.status : 409, { error: e.message }); }
     }
     if (sub === 'elgato' && m === 'POST') {
       const b = await readBody(req);
@@ -1064,5 +1085,5 @@ server.listen(PORT, HOST, () => {
   log('  Dashboard:  http://' + os.hostname().replace(/\.local$/, '') + '.local:' + PORT + '/');
   addrs.forEach(a => log('              http://' + a + ':' + PORT + '/'));
   log('  Admin:      /admin');
-  refreshWeather(); refreshPlex(); X.start(); GV.start(); EL.start(); TV.start(); IM.start(); AG.startSchedules(); CAL.start(); COSTS.publish(); setInterval(() => COSTS.publish(), 30 * 60000);
+  refreshWeather(); refreshPlex(); X.start(); GV.start(); EL.start(); CAM.start(); TV.start(); IM.start(); AG.startSchedules(); CAL.start(); COSTS.publish(); setInterval(() => COSTS.publish(), 30 * 60000);
 });

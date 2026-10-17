@@ -75,6 +75,28 @@
       onClose: function () { App.rerender(); }
     });
   }
+  // Cameras: a still on each tile (refreshed when the screen opens), live video in a sheet
+  function camsHTML() {
+    var C = (D.cameras || []).filter(function (c) { return c.live; });
+    if (!C.length) return '';
+    return '<div class="sec-l">Cameras</div><div class="cams-p">' + C.map(function (c) {
+      return '<button class="cam-p" data-camp="' + App.esc(c.id) + '"><img src="/api/home/camera/' + encodeURIComponent(c.id) + '/snapshot.jpg?t=' + Date.now() + '" alt=""><span><i></i>' + App.esc(c.name) + '</span></button>';
+    }).join('') + '</div>';
+  }
+  function camSheet(id) {
+    var c = (D.cameras || []).filter(function (x) { return x.id === id; })[0]; if (!c) return;
+    App.sheet('<div class="sh-pad"><h2 class="sh-h">' + App.esc(c.name) + '</h2><p class="sh-p" data-cs>Connecting…</p>' +
+      '<div class="cam-live-p"><img class="cam-still-p" src="/api/home/camera/' + encodeURIComponent(c.id) + '/snapshot.jpg?t=' + Date.now() + '" alt="">' +
+      '<img class="cam-live-img" src="/api/home/camera/' + encodeURIComponent(c.id) + '/live?t=' + Date.now() + '" alt=""></div></div>', {
+      tall: true,
+      onMount: function (s) {
+        var v = s.querySelector('.cam-live-img');
+        v.addEventListener('load', function () { s.querySelector('[data-cs]').textContent = '● Live'; });
+        v.addEventListener('error', function () { s.querySelector('[data-cs]').textContent = 'Live video unavailable · showing a snapshot'; v.style.display = 'none'; });
+      },
+      onClose: function () { var v = document.querySelector('.cam-live-img'); if (v) { v.src = ''; v.removeAttribute('src'); } }
+    });
+  }
   function open(d) {
     if (d.source === 'govee' || d.source === 'elgato') return goveeSheet(d);
     if (d.type === 'light' || d.type === 'blind') {
@@ -125,7 +147,7 @@
         body = '<div class="empty">' + App.icon('bulb', 30) + '<b>Nothing set up yet</b><span>Add your Govee key, pair the Apple TV, or link Apple Home lights in Admin → Lights &amp; Home. They show up here and on the frame.</span></div>';
       } else {
         body = tvEntry() + (sc.length ? '<div class="sec-l">Scenes</div><div class="scenes">' + sc.map(function (s) { return '<button data-scene="' + App.esc(s.id) + '">' + App.icon(s.icon || 'bolt', 20) + '<span>' + App.esc(s.name) + '</span></button>'; }).join('') + '</div>' : '') +
-          climate() +
+          climate() + camsHTML() +
           rooms.concat(list.some(function (d) { return !rooms.some(function (r) { return r.id === d.room; }); }) ? [{ id: '__other', name: 'Other' }] : []).map(function (r) {
             var ds = list.filter(function (d) { return r.id === '__other' ? !rooms.some(function (x) { return x.id === d.room; }) : d.room === r.id; });
             return '<div class="sec-l">' + App.esc(r.name) + '</div>' + (ds.length ? '<div class="dvs">' + ds.map(tile).join('') + '</div>' : '<p class="dvs-empty">No devices yet</p>');
@@ -139,6 +161,7 @@
         el.addEventListener('click', function (e) {
           var t;
           if ((t = e.target.closest('[data-go]'))) return App.go(t.dataset.go);
+          if ((t = e.target.closest('[data-camp]'))) return camSheet(t.dataset.camp);
           if ((t = e.target.closest('[data-scene]'))) return scene(t.dataset.scene);
           if ((t = e.target.closest('[data-dev]'))) { var d = dev(t.dataset.dev); if (d) open(d); return; }
           if (e.target.closest('[data-alloff]')) { devs().forEach(function (d) { if (d.type === 'light') d.on = false; }); App.save(); App.rerender(); return App.toast('All lights off', { icon: 'bulb' }); }

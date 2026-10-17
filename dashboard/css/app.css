@@ -644,3 +644,11 @@ a { color: inherit; text-decoration: none; }
 .ct-range { -webkit-appearance: none; appearance: none; width: 100%; height: 40px; background: transparent; margin: 0 0 10px; }
 .ct-range::-webkit-slider-runnable-track { height: 16px; border-radius: 999px; background: linear-gradient(90deg, #FF8A2A, #FFB45E 22%, #FFD9A8 45%, #FFF3E2 65%, #F4F6FF 82%, #CFDCFF); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .2); }
 .ct-range::-webkit-slider-thumb { -webkit-appearance: none; width: 30px; height: 30px; margin-top: -7px; border-radius: 50%; background: #fff; border: 3px solid #1F1C18; box-shadow: 0 2px 8px rgba(0, 0, 0, .35); }
+/* Cameras */
+.cams-p { display: grid; grid-template-columns: 1fr; gap: 10px; margin-bottom: 6px; }
+.cam-p { position: relative; border-radius: 18px; overflow: hidden; background: var(--card); aspect-ratio: 16 / 9; padding: 0; }
+.cam-p img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cam-p span { position: absolute; left: 10px; bottom: 10px; display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; font-size: 14px; font-weight: 600; }
+.cam-p span i { width: 8px; height: 8px; border-radius: 50%; background: #E5261E; }
+.cam-live-p { position: relative; border-radius: 16px; overflow: hidden; background: #000; aspect-ratio: 16 / 9; }
+.cam-live-p img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; }

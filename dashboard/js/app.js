@@ -369,7 +369,7 @@
   var idleSec = 0;
   function onIdleTick() {
     idleSec++;
-    var blocked = $('#takeover').classList.contains('is-open');
+    var blocked = $('#takeover').classList.contains('is-open') || !!document.querySelector('.cam-live'); // don't lock while watching a camera
     if (App.mode !== 'day' || blocked) return;
     var lockAfter = App.displayCfg().lockAfter;
     if (idleSec === App.idle.home && App.current !== 'home' && App.current !== 'settings') { App.closeSheet(); App.go('home'); }
