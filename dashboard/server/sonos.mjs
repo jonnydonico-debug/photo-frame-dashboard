@@ -204,35 +204,74 @@ export function createSonos({ log }) {
     let sn = acc.sn;
     const add = uri => soap(h, 'transport', 'AddURIToQueue', { InstanceID: 0, EnqueuedURI: escapeXml('x-sonos-spotify:' + encodeURIComponent(uri) + '?sid=' + acc.sid + '&flags=8224&sn=' + sn), EnqueuedURIMetaData: '', DesiredFirstTrackNumberEnqueued: 0, EnqueueAsNext: 0 });
     const ordered = list.slice(startAt).concat(list.slice(0, startAt));
-    const wait = ms => new Promise(r => setTimeout(r, ms));
-    // Queue the chosen song and start it. The speaker sometimes needs a moment after switching
-    // over (e.g. from a Spotify Connect session), so Play is tried three times.
-    async function attempt() {
+    // Queue the chosen song and start it. "Started" isn't enough: with the wrong Spotify account
+    // the speaker accepts Play, then stops a few seconds later. So wait until the song is really
+    // moving (position past 0:01). Play itself is retried (the speaker needs a moment after
+    // leaving a Spotify Connect session).
+    async function attempt(ms) {
       await soap(h, 'transport', 'RemoveAllTracksFromQueue', { InstanceID: 0 });
       await add(ordered[0]);
       await soap(h, 'transport', 'SetAVTransportURI', { InstanceID: 0, CurrentURI: 'x-rincon-queue:' + coord.uuid + '#0', CurrentURIMetaData: '' });
-      let err;
+      let err = null;
       for (let i = 0; i < 3; i++) {
-        try { await soap(h, 'transport', 'Play', { InstanceID: 0, Speed: 1 }); return true; }
+        try { await soap(h, 'transport', 'Play', { InstanceID: 0, Speed: 1 }); err = null; break; }
         catch (e) { if (netErr(e)) throw e; err = e; await wait(700); }
       }
-      return err;
+      if (err) return { ok: false, why: err.message };
+      return moving(h, ms);
     }
-    let r = await attempt();
-    if (r !== true) {
-      // Still refused: the song is queued under the wrong Spotify account number (the speaker
-      // can't stream it). Try the other account slots the Sonos uses and remember the one that works.
-      const first = sn, tried = [first];
-      log('sonos: Play refused after queueing (' + r.message + ') · account sid ' + acc.sid + ' sn ' + first + (acc.guessed ? ' (guessed)' : '') + ' · coordinator ' + coord.name + ' ' + (coord.uuid || 'no uuid') + ' · ' + await queueInfo(h));
-      for (const s of ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'].filter(x => x !== first)) {
-        sn = s; tried.push(s);
-        const ok = await attempt().catch(e => e);
-        if (ok === true) { account = { sid: acc.sid, sn: s, desc: acc.desc }; log('sonos: Spotify plays with account sn ' + s + ' (not ' + first + '); remembering that'); r = true; break; }
+    const order = [sn].concat((await accountSlots(h)).filter(x => x !== sn), ['1', '2', '3', '4', '5', '6', '7', '8'].filter(x => x !== sn));
+    const tried = [];
+    let r = null;
+    for (const s of [...new Set(order)]) {
+      sn = s; tried.push(s + ':' + (r ? r.why : ''));
+      r = await attempt(tried.length === 1 ? 7000 : 5000);
+      if (r.ok) {
+        if (s !== acc.sn || acc.guessed) { account = { sid: acc.sid, sn: s, desc: acc.desc }; log('sonos: Spotify plays with account sn ' + s + (s !== acc.sn ? ' (not ' + acc.sn + ')' : '') + '; remembering that'); }
+        break;
       }
-      if (r !== true) { log('sonos: no account slot worked (tried sn ' + tried.join(',') + ')'); throw new Error('The Sonos won’t play Spotify songs sent from the dashboard. In the Sonos app, check Spotify is added under Settings → Services, then try again.'); }
+      if (tried.length === 1) log('sonos: song didn’t play (' + r.why + ') · account sid ' + acc.sid + ' sn ' + s + (acc.guessed ? ' (guessed)' : '') + ' · ' + await queueInfo(h) + ' · trying the other account slots');
+    }
+    if (!r || !r.ok) {
+      log('sonos: no Spotify account slot played (' + (r && r.why) + ') · tried sn ' + [...new Set(order)].join(','));
+      try { await soap(h, 'transport', 'Stop', { InstanceID: 0 }); } catch {}
+      throw new Error('The Sonos won’t stream Spotify songs sent from the dashboard. In the Sonos app, make sure Spotify is added under Settings → Services & Voice, then try again.');
     }
     (async () => { for (const u of ordered.slice(1)) { try { await add(u); } catch (e) { log('sonos queue:', e.message); } } })();
     return { ok: true, queued: ordered.length };
+  }
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  // Is the speaker really playing? Watch position for up to ms.
+  async function moving(h, ms) {
+    const end = Date.now() + ms; let last = '';
+    await wait(800);
+    while (Date.now() < end) {
+      try {
+        const st = tag(await soap(h, 'transport', 'GetTransportInfo', { InstanceID: 0 }, 3000), 'CurrentTransportState');
+        const pos = secs(tag(await soap(h, 'transport', 'GetPositionInfo', { InstanceID: 0 }, 3000), 'RelTime'));
+        last = st + ' at ' + pos + 's';
+        if (st === 'PLAYING' && pos >= 1) return { ok: true };
+        if (st === 'STOPPED' || st === 'PAUSED_PLAYBACK') return { ok: false, why: 'started then ' + st.toLowerCase() };
+      } catch (e) { if (netErr(e)) throw e; }
+      await wait(600);
+    }
+    return { ok: false, why: 'never got going (' + (last || 'no state') + ')' };
+  }
+  // Spotify account numbers the speaker has saved (older firmware lists them; newer may not).
+  let slots = null;
+  async function accountSlots(h) {
+    if (slots) return slots;
+    slots = [];
+    try {
+      const r = await fetch('http://' + h + ':1400/status/accounts', { signal: AbortSignal.timeout(3000) });
+      const x = r.ok ? await r.text() : '';
+      for (const m of x.matchAll(/<Account\s([^>]*)>/g)) {
+        const type = (m[1].match(/Type="(\d+)"/) || [])[1], ser = (m[1].match(/SerialNum="(\d+)"/) || [])[1];
+        if (ser && (type === '3079' || type === '2311' || type === '12')) slots.push(ser);
+      }
+      log('sonos: saved Spotify accounts on the speaker: ' + (slots.length ? 'sn ' + slots.join(', ') : r.ok ? 'none listed' : 'not available (' + r.status + ')'));
+    } catch (e) { log('sonos: couldn’t read saved accounts (' + e.message + ')'); }
+    return slots;
   }
   async function queueInfo(h) {
     try {
