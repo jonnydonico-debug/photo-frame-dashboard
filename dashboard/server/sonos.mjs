@@ -201,15 +201,46 @@ export function createSonos({ log }) {
     const list = (Array.isArray(tracks) ? tracks : [tracks]).filter(u => /:track:/.test(u)).slice(0, 100);
     if (!list.length) throw new Error('Nothing playable here');
     startAt = Math.max(0, Math.min(list.length - 1, +startAt || 0));
-    const add = uri => soap(h, 'transport', 'AddURIToQueue', { InstanceID: 0, EnqueuedURI: escapeXml('x-sonos-spotify:' + encodeURIComponent(uri) + '?sid=' + acc.sid + '&flags=8224&sn=' + acc.sn), EnqueuedURIMetaData: '', DesiredFirstTrackNumberEnqueued: 0, EnqueueAsNext: 0 });
-    await soap(h, 'transport', 'RemoveAllTracksFromQueue', { InstanceID: 0 });
-    // Queue the chosen song first and start it, then add the rest in the background.
+    let sn = acc.sn;
+    const add = uri => soap(h, 'transport', 'AddURIToQueue', { InstanceID: 0, EnqueuedURI: escapeXml('x-sonos-spotify:' + encodeURIComponent(uri) + '?sid=' + acc.sid + '&flags=8224&sn=' + sn), EnqueuedURIMetaData: '', DesiredFirstTrackNumberEnqueued: 0, EnqueueAsNext: 0 });
     const ordered = list.slice(startAt).concat(list.slice(0, startAt));
-    await add(ordered[0]);
-    await soap(h, 'transport', 'SetAVTransportURI', { InstanceID: 0, CurrentURI: 'x-rincon-queue:' + coord.uuid + '#0', CurrentURIMetaData: '' });
-    await soap(h, 'transport', 'Play', { InstanceID: 0, Speed: 1 });
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    // Queue the chosen song and start it. The speaker sometimes needs a moment after switching
+    // over (e.g. from a Spotify Connect session), so Play is tried three times.
+    async function attempt() {
+      await soap(h, 'transport', 'RemoveAllTracksFromQueue', { InstanceID: 0 });
+      await add(ordered[0]);
+      await soap(h, 'transport', 'SetAVTransportURI', { InstanceID: 0, CurrentURI: 'x-rincon-queue:' + coord.uuid + '#0', CurrentURIMetaData: '' });
+      let err;
+      for (let i = 0; i < 3; i++) {
+        try { await soap(h, 'transport', 'Play', { InstanceID: 0, Speed: 1 }); return true; }
+        catch (e) { if (netErr(e)) throw e; err = e; await wait(700); }
+      }
+      return err;
+    }
+    let r = await attempt();
+    if (r !== true) {
+      // Still refused: the song is queued under the wrong Spotify account number (the speaker
+      // can't stream it). Try the other account slots the Sonos uses and remember the one that works.
+      const first = sn, tried = [first];
+      log('sonos: Play refused after queueing (' + r.message + ') · account sid ' + acc.sid + ' sn ' + first + (acc.guessed ? ' (guessed)' : '') + ' · coordinator ' + coord.name + ' ' + (coord.uuid || 'no uuid') + ' · ' + await queueInfo(h));
+      for (const s of ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'].filter(x => x !== first)) {
+        sn = s; tried.push(s);
+        const ok = await attempt().catch(e => e);
+        if (ok === true) { account = { sid: acc.sid, sn: s, desc: acc.desc }; log('sonos: Spotify plays with account sn ' + s + ' (not ' + first + '); remembering that'); r = true; break; }
+      }
+      if (r !== true) { log('sonos: no account slot worked (tried sn ' + tried.join(',') + ')'); throw new Error('The Sonos won’t play Spotify songs sent from the dashboard. In the Sonos app, check Spotify is added under Settings → Services, then try again.'); }
+    }
     (async () => { for (const u of ordered.slice(1)) { try { await add(u); } catch (e) { log('sonos queue:', e.message); } } })();
     return { ok: true, queued: ordered.length };
+  }
+  async function queueInfo(h) {
+    try {
+      const m = unescapeXml(await soap(h, 'transport', 'GetMediaInfo', { InstanceID: 0 }));
+      const t = unescapeXml(await soap(h, 'transport', 'GetTransportInfo', { InstanceID: 0 }));
+      const q = await soap(h, 'content', 'Browse', { ObjectID: 'Q:0', BrowseFlag: 'BrowseDirectChildren', Filter: '', StartingIndex: 0, RequestedCount: 1, SortCriteria: '' });
+      return 'tracks in queue ' + ((q.match(/<TotalMatches>(\d+)/) || [])[1] || '?') + ' · source ' + (tag(m, 'CurrentURI') || '-').slice(0, 60) + ' · state ' + tag(t, 'CurrentTransportState');
+    } catch (e) { return 'state unknown (' + e.message + ')'; }
   }
   // What the room is playing, straight from the speaker
   function tag(x, t) { const m = x.match(new RegExp('<' + t + '[^>]*>([\\s\\S]*?)</' + t + '>')); return m ? unescapeXml(m[1]) : ''; }
