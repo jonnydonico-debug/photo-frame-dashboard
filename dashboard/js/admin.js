@@ -546,7 +546,7 @@ function home() {
       <label class="f"><span class="f-l">Humidity %</span><input type="number" data-clim="humidity" value="${C.humidity ?? ''}"></label>
       <label class="f"><span class="f-l">Mode</span><select data-clim="mode">${['heat', 'cool', 'auto', 'off'].map(m => `<option ${C.mode === m ? 'selected' : ''}>${m}</option>`).join('')}</select></label></div>
       <label class="f f--wide"><span class="f-l">Thermostat Shortcut (gets “heat 21.5”)</span><span class="row"><input data-setting="climateShortcut" list="shortcut-list" value="${esc(S.settings.climateShortcut || '')}"></span></label>
-    </section>` + listHTML('cameras');
+    </section>`;
 }
 function settings() {
   const st = S.settings || {}, P = cfg.plex, TT = cfg.tomtom || { set: false, status: {} };
