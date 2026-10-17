@@ -457,7 +457,15 @@ export function createIntegrations(ctx) {
     if (!b.uri && !b.uris && ['play', 'pause', 'next', 'prev', 'volume'].includes(b.action) && (cur && cur.restricted || (!cur || !cur.id) && secrets.musicTarget && secrets.musicTarget.sonos)) {
       const room = await sonosRoomFor();
       if (!room) throw new Error((cur ? cur.name : 'That speaker') + ' isn’t answering on the network');
-      await sonos.command(room, b.action, b.volume);
+      try { await sonos.command(room, b.action, b.volume); }
+      catch (e) {
+        // 701 = "nothing to resume": the song was started from the Spotify app and that session has
+        // ended (or the Sonos is on TV sound). Load the same song (and its album/playlist) straight
+        // onto the Sonos instead, picking up where it was, or the next/previous song.
+        if (!/said no/.test(e.message) || b.action === 'volume') throw e;
+        if (b.action === 'pause') return { ok: true, via: 'sonos', note: 'already stopped' };
+        await resumeOnSonos(room, b.action, e);
+      }
       if (b.action === 'play' || b.action === 'pause') { spState = Object.assign({}, spState, { playing: b.action === 'play', at: Date.now() }); commit({ music: spState }, 'server'); }
       setTimeout(refreshSpotify, 900);
       return { ok: true, via: 'sonos' };
@@ -505,6 +513,22 @@ export function createIntegrations(ctx) {
     return data;
   }
   // Songs to queue on a Sonos for a play request
+  async function resumeOnSonos(room, action, err) {
+    const uri = spState.uri, ctx = spState.context, pos = spState.progress || 0;
+    if (!uri || !/:track:/.test(uri)) {
+      const src = await sonos.source(room).catch(() => ({}));
+      throw new Error(src.kind === 'tv' ? 'The Sonos is playing TV sound right now. Pick a song or playlist in Music to switch it.' : 'Nothing to resume on the Sonos. Pick a song or playlist in Music.');
+    }
+    let list = [uri];
+    if (/:(album|playlist):/.test(ctx || '')) list = await trackList({ uri: ctx }).catch(() => [uri]);
+    let i = Math.max(0, list.indexOf(uri));
+    if (action === 'next') i = Math.min(list.length - 1, i + 1);
+    if (action === 'prev') i = pos > 5000 ? i : Math.max(0, i - 1);
+    await sonos.playSpotify(room, list, i);
+    // Pick up mid-song on Play (best effort; the speaker needs a moment to start)
+    if (action === 'play' && list[i] === uri && pos > 5000) setTimeout(() => sonos.seek(room, pos).catch(() => {}), 1500);
+    log('music: Sonos had nothing to', action, '(' + err.message + '), so the song was loaded onto it again');
+  }
   async function trackList(b) {
     if (b.uris) return b.uris;
     if (/:track:/.test(b.uri)) return [b.uri];

@@ -95,6 +95,20 @@ export function createSonos({ log }) {
     }
   }
 
+  // What the room is set to play from: 'tv' (TV/HDMI sound), 'queue' (its own queue), 'stream'
+  // (a Spotify Connect / AirPlay session run from a phone), 'linein', or 'none'.
+  async function source(room) {
+    const x = await soap(room.coordinatorHost, 'transport', 'GetMediaInfo', { InstanceID: 0 }).catch(() => '');
+    const u = unescapeXml(tag(x, 'CurrentURI'));
+    const kind = !u ? 'none' : /x-sonos-htastream/i.test(u) ? 'tv' : /x-rincon-queue/i.test(u) ? 'queue' : /x-rincon-stream|x-rincon-mp3radio/i.test(u) ? 'linein' : 'stream';
+    return { kind, uri: u };
+  }
+  async function seek(room, ms) {
+    const t = Math.max(0, Math.round(ms / 1000)), hh = Math.floor(t / 3600), mm = Math.floor(t / 60) % 60, ss = t % 60;
+    const target = hh + ':' + String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
+    return soap(room.coordinatorHost, 'transport', 'Seek', { InstanceID: 0, Unit: 'REL_TIME', Target: target });
+  }
+
   // ---------------------------------------------------------------- play Spotify on a Sonos room
   // Sonos plays Spotify itself (through the Spotify account linked in the Sonos app). We need that
   // account's numbers (sid/sn) and region descriptor, which we read from a Sonos favourite or from
@@ -206,5 +220,5 @@ export function createSonos({ log }) {
     try { await soap(h, 'transport', 'RemoveAllTracksFromQueue', { InstanceID: 0 }); } catch {}
     return { acc, results: out };
   }
-  return { scan, find, command, playSpotify, nowPlaying, art, debug, probe, status: () => status, rooms: () => rooms };
+  return { scan, find, command, source, seek, playSpotify, nowPlaying, art, debug, probe, status: () => status, rooms: () => rooms };
 }

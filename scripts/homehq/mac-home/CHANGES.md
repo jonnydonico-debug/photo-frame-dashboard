@@ -2,6 +2,16 @@
 
 Newest first. Claude Code (or you) adds an entry for every edit made directly on the Mac.
 
+## 2026-10-16 — (from GitHub) Sonos: Play/Skip work after a Spotify-app session ends
+Log showed: `play → FAILED: Sonos said no (Play 701)` while the Sonos still showed the paused
+song. 701 = nothing to resume (the Spotify Connect session started from the phone had ended, or
+the Sonos is on TV sound), so the frame's buttons did nothing.
+- `app/server/sonos.mjs`: `source(room)` (tv / queue / stream / linein / none) and `seek(room, ms)`.
+- `app/server/integrations.mjs`: when Play/Next/Previous gets "Sonos said no", load the same song
+  (with its album/playlist) onto the Sonos queue and play it — resuming at the same spot for Play,
+  the next/previous song for Skip. Pause with nothing playing is treated as done. Clear message if
+  there's nothing to resume.
+
 ## 2026-10-16 — (from GitHub) Log music button presses
 - `app/server/server.mjs`, `app/server/integrations.mjs` (`musicDebug`): every `/api/music`
   command is logged with the result (ok via Sonos/Spotify, or the error) plus what's playing, the
