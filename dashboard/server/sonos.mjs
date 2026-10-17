@@ -12,21 +12,25 @@ const SOAP = {
 function escapeXml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function unescapeXml(s) { return String(s).replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&'); }
 
-async function soap(host, svc, action, args) {
+const okAt = new Map();   // host -> last time it answered
+async function soap(host, svc, action, args, ms = 5000) {
   const s = SOAP[svc];
   const body = '<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body>' +
     '<u:' + action + ' xmlns:u="' + s.urn + '">' + Object.entries(args || {}).map(([k, v]) => '<' + k + '>' + v + '</' + k + '>').join('') + '</u:' + action + '></s:Body></s:Envelope>';
   const r = await fetch('http://' + host + ':1400' + s.path, {
-    method: 'POST', body, signal: AbortSignal.timeout(5000),
+    method: 'POST', body, signal: AbortSignal.timeout(ms),
     headers: { 'Content-Type': 'text/xml; charset="utf-8"', SOAPACTION: '"' + s.urn + '#' + action + '"' }
   });
   const t = await r.text();
+  okAt.set(host, Date.now());
   if (!r.ok) {
     const code = (t.match(/<errorCode>(\d+)<\/errorCode>/) || [])[1];
     throw new Error('Sonos said no (' + action + (code ? ' ' + code : '') + ')');
   }
   return t;
 }
+// A network failure (speaker unreachable / moved), as opposed to the speaker answering "no"
+const netErr = e => !/said no/.test(e && e.message || '');
 
 function discover(timeout = 2500) {
   return new Promise(resolve => {
@@ -52,9 +56,15 @@ export function createSonos({ log }) {
     if (scanning) return scanning;
     scanning = (async () => {
       try {
-        const hosts = await discover();
-        if (!hosts.length) { status = { ok: false, note: 'No Sonos speakers found on the network' }; rooms = []; return rooms; }
-        const xml = unescapeXml(await soap(hosts[0], 'topology', 'GetZoneGroupState', {}));
+        const t0 = Date.now();
+        // Discovery replies are UDP and sometimes get lost: also ask the speakers we already know.
+        const known = [...new Set(rooms.map(r => r.host))];
+        let hosts = await discover();
+        hosts = [...new Set(hosts.concat(known))];
+        if (!hosts.length) { status = { ok: false, note: 'No Sonos speakers found on the network' }; log('sonos: no speakers answered the network search'); return rooms; }
+        let xml = null;
+        for (const h of hosts) { try { xml = unescapeXml(await soap(h, 'topology', 'GetZoneGroupState', {}, 4000)); break; } catch {} }
+        if (!xml) { status = { ok: false, error: 'Sonos speakers found but none answered' }; log('sonos: found', hosts.join(', '), 'but none answered'); return rooms; }
         const out = [];
         for (const g of xml.match(/<ZoneGroup [\s\S]*?<\/ZoneGroup>/g) || []) {
           const coord = (g.match(/Coordinator="([^"]+)"/) || [])[1];
@@ -67,6 +77,8 @@ export function createSonos({ log }) {
           if (!c) continue;
           members.forEach(m => out.push({ name: m.name, uuid: m.uuid, host: m.host, coordinatorHost: c.host, coordinatorName: c.name, groupNames: members.map(x => x.name) }));
         }
+        const sig = r => r.map(x => x.name + '@' + x.host + '>' + x.coordinatorHost).sort().join(' ');
+        if (sig(out) !== sig(rooms)) log('sonos: ' + (out.map(r => r.name + ' at ' + r.host + (r.coordinatorHost !== r.host ? ' (grouped with ' + r.coordinatorName + ')' : '')).join(', ') || 'no rooms') + ' · found in ' + (Date.now() - t0) + ' ms');
         rooms = out; lastScan = Date.now();
         status = { ok: true, rooms: rooms.map(r => r.name) };
       } catch (e) { status = { ok: false, error: e.message }; log('sonos:', e.message); }
@@ -83,7 +95,38 @@ export function createSonos({ log }) {
     return rooms.find(r => r.name.toLowerCase() === n) || rooms.find(r => n.includes(r.name.toLowerCase()) || r.name.toLowerCase().includes(n)) || null;
   }
 
-  async function command(room, action, value) {
+  // Make sure the speaker is there before sending it something. If it hasn't been heard from in a
+  // minute, ping it (twice); if it doesn't answer, search the network again (it may have a new
+  // address or have been regrouped) and use what's found.
+  async function relocate(room, why) {
+    const t0 = Date.now();
+    lastScan = 0; await scan();
+    const r = await find(room.name);
+    log('sonos:', room.name, why, '→', r ? 'found at ' + r.coordinatorHost + ' (' + (Date.now() - t0) + ' ms)' : 'not found on the network');
+    if (!r) throw new Error(room.name + ' isn’t answering on the network. Check it’s powered and on Wi-Fi.');
+    return r;
+  }
+  async function reach(room) {
+    const h = room.coordinatorHost;
+    if (Date.now() - (okAt.get(h) || 0) < 60000) return room;
+    for (let i = 0; i < 2; i++) {
+      try { await soap(h, 'transport', 'GetTransportInfo', { InstanceID: 0 }, 2500); return room; }
+      catch (e) { if (!netErr(e)) return room; }
+    }
+    return relocate(room, 'didn’t answer a ping');
+  }
+  // Run op(room) on a speaker that's awake; on a network failure, find it again and retry once.
+  async function withRoom(room, op) {
+    room = await reach(room);
+    try { return await op(room); }
+    catch (e) {
+      if (!netErr(e)) throw e;
+      room = await relocate(room, 'dropped a command (' + e.message + ')');
+      return op(room);
+    }
+  }
+  function command(room, action, value) { return withRoom(room, r => command1(r, action, value)); }
+  async function command1(room, action, value) {
     const h = room.coordinatorHost;
     switch (action) {
       case 'play': return soap(h, 'transport', 'Play', { InstanceID: 0, Speed: 1 });
@@ -103,7 +146,8 @@ export function createSonos({ log }) {
     const kind = !u ? 'none' : /x-sonos-htastream/i.test(u) ? 'tv' : /x-rincon-queue/i.test(u) ? 'queue' : /x-rincon-stream|x-rincon-mp3radio/i.test(u) ? 'linein' : 'stream';
     return { kind, uri: u };
   }
-  async function seek(room, ms) {
+  function seek(room, ms) { return withRoom(room, r => seek1(r, ms)); }
+  async function seek1(room, ms) {
     const t = Math.max(0, Math.round(ms / 1000)), hh = Math.floor(t / 3600), mm = Math.floor(t / 60) % 60, ss = t % 60;
     const target = hh + ':' + String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
     return soap(room.coordinatorHost, 'transport', 'Seek', { InstanceID: 0, Unit: 'REL_TIME', Target: target });
@@ -149,7 +193,8 @@ export function createSonos({ log }) {
   }
   // The Beam only accepts single Spotify songs (bare URI, no metadata). Albums and playlists are
   // expanded to their songs first. tracks: list of spotify:track: URIs; startAt: 0-based index.
-  async function playSpotify(room, tracks, startAt) {
+  function playSpotify(room, tracks, startAt) { return withRoom(room, r => playSpotify1(r, tracks, startAt)); }
+  async function playSpotify1(room, tracks, startAt) {
     const acc = await spotifyAccount(room);
     const h = room.coordinatorHost;
     const coord = rooms.find(r => r.host === h) || room;
@@ -169,7 +214,16 @@ export function createSonos({ log }) {
   // What the room is playing, straight from the speaker
   function tag(x, t) { const m = x.match(new RegExp('<' + t + '[^>]*>([\\s\\S]*?)</' + t + '>')); return m ? unescapeXml(m[1]) : ''; }
   function secs(t) { const p = String(t || '0:0:0').split(':').map(Number); return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : 0; }
+  let lostAt = 0;
   async function nowPlaying(room) {
+    try { return await nowPlaying1(room); }
+    catch (e) {
+      // Speaker gone quiet: look for it again in the background (at most every 30 s)
+      if (netErr(e) && Date.now() - lostAt > 30000) { lostAt = Date.now(); lastScan = 0; scan().catch(() => {}); }
+      throw e;
+    }
+  }
+  async function nowPlaying1(room) {
     const h = room.coordinatorHost;
     const [pos, tr, vol] = await Promise.all([
       soap(h, 'transport', 'GetPositionInfo', { InstanceID: 0 }), soap(h, 'transport', 'GetTransportInfo', { InstanceID: 0 }),
@@ -180,7 +234,7 @@ export function createSonos({ log }) {
     const uri = unescapeXml(tag(pos, 'TrackURI'));
     const sp = decodeURIComponent((uri.match(/spotify(%3a|:)track(%3a|:)([A-Za-z0-9]+)/i) || [])[3] || '');
     return {
-      playing: tag(tr, 'CurrentTransportState') === 'PLAYING', title: tag(meta, 'dc:title'), artist: tag(meta, 'dc:creator'), album: tag(meta, 'upnp:album'),
+      playing: /^(PLAYING|TRANSITIONING)$/.test(tag(tr, 'CurrentTransportState')), title: tag(meta, 'dc:title'), artist: tag(meta, 'dc:creator'), album: tag(meta, 'upnp:album'),
       art, progress: secs(tag(pos, 'RelTime')) * 1000, duration: secs(tag(pos, 'TrackDuration')) * 1000,
       uri: sp ? 'spotify:track:' + sp : '', volume: +tag(vol, 'CurrentVolume') || 0
     };

@@ -344,7 +344,7 @@ export function createIntegrations(ctx) {
     return js;
   }
   const img = (images, w) => { if (!images || !images.length) return ''; const s = images.slice().sort((a, b) => (a.width || 0) - (b.width || 0)); return (s.find(i => (i.width || 0) >= w) || s[s.length - 1]).url; };
-  let devicesAt = 0, devices = [];
+  let devicesAt = 0, devices = [], npFail = 0;
   const metaCache = new Map();
   async function trackMeta(uri) {
     if (metaCache.has(uri)) return metaCache.get(uri);
@@ -364,9 +364,17 @@ export function createIntegrations(ctx) {
       let p = await sp('GET', '/me/player?additional_types=episode');
       // Music queued on the Sonos (not a Spotify Connect session) is invisible to Spotify: ask the speaker.
       const t = secrets.musicTarget;
-      if (t && t.sonos && !(p && p.item && p.is_playing)) {
+      const ask = room => sonos.nowPlaying(room).then(n => { if (npFail) log('sonos: answering again'); npFail = 0; return n; })
+        .catch(e => { if (!npFail++) log('sonos now playing:', e.message, '(looking for it again)'); return null; });
+      if (p && p.item && p.device && (p.device.is_restricted || !p.device.id)) {
+        // Spotify's report for a Sonos lags behind (and goes stale after the dashboard pauses or
+        // skips the speaker directly), so play/pause and position come from the speaker itself.
+        const room = await sonos.find(p.device.name).catch(() => null);
+        const n = room ? await ask(room) : null;
+        if (n) { p.is_playing = n.playing; if (n.duration) p.progress_ms = n.progress; }
+      } else if (t && t.sonos && !(p && p.item && p.is_playing)) {
         const room = await sonos.find(t.name).catch(() => null);
-        const n = room ? await sonos.nowPlaying(room).catch(e => { log('sonos now playing:', e.message); return null; }) : null;
+        const n = room ? await ask(room) : null;
         // Songs the dashboard queues carry no metadata (the Beam rejects it), so the speaker only
         // knows the Spotify track id. Fill in title/artist/art from Spotify.
         const m = n && n.uri && (!n.title || !n.art || /^(x-sonos|spotify)/i.test(n.title)) ? await trackMeta(n.uri) : null;
