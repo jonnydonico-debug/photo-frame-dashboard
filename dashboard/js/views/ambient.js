@@ -21,7 +21,10 @@
   var hdFailed = false;
   App.sceneQuality = function () { var q = App.displayCfg().lock.quality; return q || (/Android/i.test(navigator.userAgent) ? 'light' : 'hd'); };
   function hd() { return App.sceneQuality() === 'hd' && !hdFailed; }
-  function srcFor(v, which) { return hd() && v.canPlayType('video/mp4; codecs="avc1.4D401F"') ? SCENES[which] + '-hd.mp4' + VER : SCENES[which] + '.' + pickFmt(v) + VER; }
+  // 4:3 screens (iPad) get the scenes drawn for them at 2732×2048; 16:10 screens the 1280×800 ones
+  function tall() { return window.innerWidth / Math.max(1, window.innerHeight) < 1.5; }
+  function variant() { return hd() ? (tall() ? '-ipad' : '-hd') : ''; }
+  function srcFor(v, which) { return hd() && v.canPlayType('video/mp4') ? SCENES[which] + variant() + '.mp4' + VER : SCENES[which] + '.' + pickFmt(v) + VER; }
 
   function lockCfg() { return App.displayCfg().lock; }
   function sceneOn() { return lockCfg().wallpaper === 'scene'; }
@@ -61,7 +64,7 @@
   var dec = { started: 0, errors: [], gaveUp: false, said: false };
   var FRESH_MS = 20 * 60000;
   function poster(v, which) {
-    v.poster = SCENES[which] + '.jpg' + VER;
+    v.poster = SCENES[which] + (variant() === '-ipad' ? '-ipad' : '') + '.jpg' + VER;
     v.style.backgroundImage = 'url(' + v.poster + ')'; // shows until (or if) the video can play
     var bg = $('#ambient .amb-scene-bg'); if (bg) bg.style.backgroundImage = 'url(' + v.poster + ')';
   }
