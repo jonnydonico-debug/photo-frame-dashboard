@@ -31,8 +31,27 @@
   // at night 'scene' (night scene, dimmed) or 'red' (red clock, no blue light); details 'full' or 'clock'.
   var LOCK_DEFAULT = { wallpaper: 'scene', night: 'scene', details: 'full', font: 'pixel' };
   App.LEVELS = { dim: .42, medium: .62, bright: .85 };
+  // Display settings (night mode, lock screen, auto-lock) can be per screen. The wall frame uses
+  // the shared ones (saved on the Mac); other screens (an iPad, a laptop) keep their own copy in
+  // this browser by default, so changing them there doesn't touch the frame. Settings → "Applies to".
+  function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
+  App.screenOwn = function () {
+    var m = store('hq-display-mode');
+    return m ? m === 'own' : !/Android/i.test(navigator.userAgent); // the wall frame is the Android tablet
+  };
+  function ownCfg() { try { return JSON.parse(store('hq-display-own') || 'null'); } catch (e) { return null; } }
+  App.setScreenOwn = function (own) {
+    if (own && !ownCfg()) store('hq-display-own', JSON.stringify(D.display || {}));
+    store('hq-display-mode', own ? 'own' : 'shared');
+    App.emit('data');
+  };
+  App.saveDisplay = function (c) {
+    var d = { night: c.night, lockAfter: c.lockAfter, lock: c.lock };
+    if (App.screenOwn()) store('hq-display-own', JSON.stringify(d)); else D.display = d;
+    App.emit('data');
+  };
   App.displayCfg = function () {
-    var d = D.display || {};
+    var d = (App.screenOwn() && ownCfg()) || D.display || {};
     return {
       night: Object.assign({}, NIGHT_DEFAULT, d.night || {}),
       lockAfter: d.lockAfter == null ? 120 : d.lockAfter,
@@ -378,8 +397,14 @@
   App.resetIdle = function () { idleSec = 0; };
 
   // ------------------------------------------------------------ stage scaling (desktop preview only)
+  // The stage is 1280 wide; its height follows the screen's shape (800 on the 16:10 wall frame,
+  // 960 on a 4:3 iPad) so every screen is filled edge to edge, then it's scaled to fit.
   function fit() {
-    var s = Math.min(window.innerWidth / 1280, window.innerHeight / 800);
+    var W = window.innerWidth, H = window.innerHeight;
+    var h = Math.round(Math.max(720, Math.min(1024, 1280 * H / W)));
+    App.stageH = h;
+    document.documentElement.style.setProperty('--stage-h', h + 'px');
+    var s = Math.min(W / 1280, H / h);
     $('#stage').style.transform = Math.abs(s - 1) < 0.01 ? '' : 'scale(' + s + ')';
   }
 

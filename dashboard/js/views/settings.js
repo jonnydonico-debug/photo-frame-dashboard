@@ -7,11 +7,7 @@
   var STEP = 15; // minutes per tap on − / +
 
   function cfg() { return App.displayCfg(); }
-  function save(c) {
-    D.display = { night: c.night, lockAfter: c.lockAfter, lock: c.lock };
-    App.emit('data');
-    paint();
-  }
+  function save(c) { App.saveDisplay(c); paint(); }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function shift(hhmm, d) {
     var m = (App.toMin(hhmm) + d + 1440) % 1440;
@@ -63,7 +59,8 @@
     if (!V.el) return;
     var c = cfg(), n = c.night, auto = n.mode === 'auto';
     V.el.innerHTML = '<div class="st">' +
-      '<header class="st-head"><h2 class="serif">Settings</h2><span class="label">This frame and every other screen</span></header>' +
+      '<header class="st-head"><h2 class="serif">Settings</h2><div class="st-scope"><span class="label">Applies to</span>' +
+        seg('scope', [['own', 'This screen only'], ['shared', 'Shared with the wall frame']], App.screenOwn() ? 'own' : 'shared') + '</div></header>' +
       '<div class="st-cols">' +
       '<section class="card st-card">' +
       '<div class="st-title"><span class="st-ico st-ico--night">' + App.icon('moon', 28) + '</span><div><h3>Night mode</h3><p>Red on black with no blue light, like the night mode on Apple Watch.</p></div></div>' +
@@ -106,6 +103,11 @@
     var b = e.target.closest('button');
     if (!b) return;
     var c = cfg();
+    if (b.dataset.scope) {
+      App.setScreenOwn(b.dataset.scope === 'own');
+      App.toast(b.dataset.scope === 'own' ? 'Changes here stay on this screen' : 'This screen now follows the wall frame’s settings', { icon: 'check', ms: 2600 });
+      return paint();
+    }
     if (b.dataset.nmode) { c.night.mode = b.dataset.nmode; return save(c); }
     if (b.dataset.level) { c.night.level = b.dataset.level; save(c); if (!App.isNight()) App.previewNight(4); return; }
     if (b.dataset.autolock != null) { c.lockAfter = +b.dataset.autolock; return save(c); }
