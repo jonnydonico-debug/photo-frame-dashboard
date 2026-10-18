@@ -2,7 +2,7 @@
 // Status: the printer's local MQTT broker (TLS, port 8883, user "bblp", password = the LAN access
 // code on the printer's screen). It sends a full report when asked ("pushall") and then changes.
 // Camera (P1 / A1): JPEG frames over TLS on port 6000, same access code. Served to the screens as
-// MJPEG like the Tapo cameras; needs "LAN Only Liveview" turned on in the printer's settings.
+// MJPEG like the Tapo cameras. On P1 printers it's on by default (A1: Settings → Camera → Video on).
 // Access codes stay in secrets.json; screens get the status only.
 import tls from 'node:tls';
 import crypto from 'node:crypto';
@@ -165,8 +165,8 @@ export function createBambu({ secrets, saveSecrets, commit, log, notify, announc
       a.write('bblp', 16, 32, 'ascii'); a.write(String(p.code), 48, 32, 'ascii');
       sock.write(a);
     });
-    sock.on('timeout', () => end('The printer camera didn’t answer. Turn on “LAN Only Liveview” in the printer’s settings.'));
-    sock.on('error', e => end(/ECONNREFUSED/.test(e.code) ? 'The printer camera is off. Turn on “LAN Only Liveview” in the printer’s settings.' : e.message));
+    sock.on('timeout', () => end('The printer camera didn’t answer. Check the printer is on; restarting it usually brings the camera back.'));
+    sock.on('error', e => end(/ECONNREFUSED/.test(e.code) ? 'The printer camera isn’t available right now (on an A1, turn on Settings → Camera → Video).' : e.message));
     sock.on('close', () => end('Camera closed'));
     sock.on('data', d => {
       buf = Buffer.concat([buf, d]);

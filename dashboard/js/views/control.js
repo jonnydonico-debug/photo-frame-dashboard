@@ -518,7 +518,7 @@
       onMount: function (s) {
         var v = s.querySelector('.cam-live');
         v.addEventListener('load', function () { var st = s.querySelector('[data-camstate]'); if (st) st.textContent = 'Live'; });
-        v.addEventListener('error', function () { var st = s.querySelector('[data-camstate]'); if (st) st.textContent = 'Camera unavailable · turn on LAN Only Liveview on the printer'; v.style.display = 'none'; });
+        v.addEventListener('error', function () { var st = s.querySelector('[data-camstate]'); if (st) st.textContent = 'Camera unavailable right now'; v.style.display = 'none'; });
       },
       onClose: function () { var v = document.querySelector('.cam-live'); if (v) { v.src = ''; v.removeAttribute('src'); } }
     });

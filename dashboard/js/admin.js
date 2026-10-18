@@ -511,7 +511,7 @@ function printersBlock() {
       <details ${L.length ? '' : 'open'}><summary class="f-l" style="cursor:pointer">Add a printer</summary>
         <ol class="steps"><li>On the printer’s screen open <b>Settings</b> → <b>WLAN</b> (network): note the <b>IP address</b> and the 8-character <b>Access Code</b>. (Reserving that IP in your router stops it changing.)</li>
         <li>Find the <b>serial number</b>: printer <b>Settings</b> → <b>Device</b>, or Bambu Handy → your printer → ⚙︎ → Device info, or the sticker on the back.</li>
-        <li>For the camera, turn on <b>LAN Only Liveview</b> in the printer’s settings. You don’t need LAN Only Mode; the Bambu app keeps working.</li></ol>
+        <li>That’s all: the P1S camera works without any extra setting, and you don’t need LAN Only Mode (the Bambu app keeps working). On an A1, turn on Settings → Camera → Video.</li></ol>
         <div class="grid2"><label class="f"><span class="f-l">Name</span><input id="prn-name" placeholder="P1S" maxlength="30"></label>
         <label class="f"><span class="f-l">IP address</span><input id="prn-host" placeholder="192.168.0.70" autocomplete="off"></label></div>
         <div class="grid2"><label class="f"><span class="f-l">Serial number</span><input id="prn-serial" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>
