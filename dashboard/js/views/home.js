@@ -28,6 +28,21 @@
       (title ? '<div class="hm-house">' + App.esc(title) + '</div>' : '');
   }
 
+  // ------------------------------------------------------------ 3D printer indicator
+  // Shows while something is printing (or paused), and for 2 hours after a print ends.
+  function printChip() {
+    var P = D.printers || [], now = Date.now();
+    var p = P.filter(function (x) { return x.online && x.active; })[0] ||
+      P.filter(function (x) { return x.online && /^(FINISH|FAILED)$/.test(x.state) && x.endedAt && now - x.endedAt < 2 * 3600e3; })[0];
+    if (!p) return '';
+    var tone = App.printTone ? App.printTone(p) : 'run', t = App.printTime || function (m) { return m + 'm'; };
+    var txt = p.state === 'FINISH' ? 'Print done' : p.state === 'FAILED' ? 'Print failed' : p.paused ? 'Print paused · ' + p.percent + '%'
+      : (p.stage && p.state !== 'RUNNING' ? p.stage : 'Printing ' + p.percent + '%' + (p.mins ? ' · ' + t(p.mins) + ' left' : ''));
+    return '<span class="hm-print hm-print--' + tone + '" data-print>' + App.icon('printer3d', 16) + '<span>' + App.esc(txt) + '</span>' +
+      (p.active ? '<i class="hm-print-bar"><i style="width:' + p.percent + '%"></i></i>' : '') + '</span>';
+  }
+  function paintChip() { if (V.el && V.el.firstChild) V.el.querySelector('.hm-print-slot').innerHTML = printChip(); }
+
   // ------------------------------------------------------------ weather
   function weather() {
     var w = App.weatherNow(), W = D.weather || {};
@@ -201,6 +216,7 @@
     el.querySelector('.hm-music').innerHTML = music();
     el.querySelector('.hm-next').innerHTML = next();
     el.querySelector('.hm-todo').innerHTML = todos();
+    paintChip();
   }
 
   App.register('home', {
@@ -208,7 +224,7 @@
       V.el = el;
       if (!el.firstChild) {
         el.innerHTML = '<div class="hm">' +
-          '<button class="hm-tile hm-hero" data-go="photos"><div class="h-photo-stage"></div><div class="h-clock"></div></button>' +
+          '<button class="hm-tile hm-hero" data-go="photos"><div class="h-photo-stage"></div><div class="h-clock"></div><span class="hm-print-slot"></span></button>' +
           '<div class="hm-tile hm-bart"></div>' +
           '<div class="hm-tile hm-weather"></div>' +
           '<div class="hm-tile hm-music" data-go="music"></div>' +
@@ -222,6 +238,7 @@
             App.sheet('<div class="sheet-pad"><div class="label">BART service advisory</div><p class="hm-adv-full">' + App.esc((D.bart || {}).advisory || '') + '</p></div>');
             return;
           }
+          if (e.target.closest('[data-print]')) { e.stopPropagation(); App.go('control'); return; }
           var c = e.target.closest('[data-mcmd]');
           if (c) { e.stopPropagation(); App.musicCmd(c.dataset.mcmd); return; }
           var t = e.target.closest('[data-todo]');
@@ -243,6 +260,7 @@
     if (!V.el || !V.el.firstChild) return;
     V.el.querySelector('.h-clock').innerHTML = clock();
     V.el.querySelector('.hm-next').innerHTML = next();
+    paintChip();
     if (n.getMinutes() === 0) { V.el.querySelector('.hm-weather').innerHTML = weather(); V.el.querySelector('.hm-rain').innerHTML = rain(); }
     if (n.getHours() === 0 && n.getMinutes() === 0) V.el.querySelector('.hm-todo').innerHTML = todos();
   });
@@ -261,5 +279,6 @@
     if (keys.indexOf('weather') > -1) { V.el.querySelector('.hm-weather').innerHTML = weather(); V.el.querySelector('.hm-rain').innerHTML = rain(); }
     if (keys.indexOf('events') > -1 || keys.indexOf('groceries') > -1) V.el.querySelector('.hm-next').innerHTML = next();
     if (keys.indexOf('todos') > -1 || keys.indexOf('chores') > -1) V.el.querySelector('.hm-todo').innerHTML = todos();
+    if (keys.indexOf('printers') > -1) paintChip();
   });
 })();

@@ -502,6 +502,24 @@ function camerasBlock() {
         <div class="row" style="margin-top:8px"><button class="btn btn--solid" data-camadd>Test &amp; add</button></div></details>` : ''}
     </section>`;
 }
+function printersBlock() {
+  const L = cfg.printerList || [];
+  const who = { jd: 'texts JD', georgia: 'texts Georgia', both: 'texts JD and Georgia', none: 'no texts' };
+  return `<section class="block" id="printers"><div class="block-h"><h2 class="serif">3D printer</h2><span class="muted">${L.length ? L.map(p => p.online ? p.stateText.toLowerCase() : 'offline').join(', ') : 'none'}</span></div>
+      <p class="intro">Bambu Lab printers (P1S, P1P, X1, A1) on your Wi-Fi: progress, time left, temperatures and the printer camera on the frame’s Home tab and the phone, a badge on Today while something prints, and a text when a print finishes or fails. Read-only: the dashboard never starts or stops prints.</p>
+      ${L.length ? '<ul class="status">' + L.map(p => `<li><b>${esc(p.name)}</b><span>${esc(p.host)} · ${p.online ? esc(p.stateText) + (p.active ? ' ' + p.percent + '%' : '') : esc(p.error || 'connecting…')} · ${who[p.notify] || ''} <button class="linkbtn small" data-prnrm="${esc(p.id)}">remove</button></span></li>`).join('') + '</ul>' : ''}
+      <details ${L.length ? '' : 'open'}><summary class="f-l" style="cursor:pointer">Add a printer</summary>
+        <ol class="steps"><li>On the printer’s screen open <b>Settings</b> → <b>WLAN</b> (network): note the <b>IP address</b> and the 8-character <b>Access Code</b>. (Reserving that IP in your router stops it changing.)</li>
+        <li>Find the <b>serial number</b>: printer <b>Settings</b> → <b>Device</b>, or Bambu Handy → your printer → ⚙︎ → Device info, or the sticker on the back.</li>
+        <li>For the camera, turn on <b>LAN Only Liveview</b> in the printer’s settings. You don’t need LAN Only Mode; the Bambu app keeps working.</li></ol>
+        <div class="grid2"><label class="f"><span class="f-l">Name</span><input id="prn-name" placeholder="P1S" maxlength="30"></label>
+        <label class="f"><span class="f-l">IP address</span><input id="prn-host" placeholder="192.168.0.70" autocomplete="off"></label></div>
+        <div class="grid2"><label class="f"><span class="f-l">Serial number</span><input id="prn-serial" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>
+        <label class="f"><span class="f-l">Access Code</span><input id="prn-code" type="password" autocomplete="new-password" data-1p-ignore data-lpignore="true"></label></div>
+        <label class="f"><span class="f-l">When a print finishes or fails</span><select id="prn-notify"><option value="jd">Text JD</option><option value="georgia">Text Georgia</option><option value="both">Text both</option><option value="none">Just show it on the frame</option></select></label>
+        <div class="row" style="margin-top:8px"><button class="btn btn--solid" data-prnadd>Test &amp; add</button></div></details>
+    </section>`;
+}
 function tvBlock() {
   const T = cfg.tv || { setup: { state: 'missing' } }, live = S.tv || {}, st = T.setup || {};
   let body = '';
@@ -528,7 +546,7 @@ function home() {
   const linked = (S.devices || []).filter(d => d.shortcut).length;
   const C = S.climate || {};
   if (cfg.tv && cfg.tv.setup && cfg.tv.setup.state === 'installing') setTimeout(async () => { if (section !== 'home') return; cfg = await call('/api/admin/config'); rerenderSoon(); }, 3000);
-  return goveeBlock() + elgatoBlock() + camerasBlock() + tvBlock() + `<section class="block guide">
+  return goveeBlock() + elgatoBlock() + camerasBlock() + printersBlock() + tvBlock() + `<section class="block guide">
       <div class="block-h"><h2 class="serif">How HomeKit control works</h2><span class="muted">${linked}/${(S.devices || []).length} linked</span></div>
       <ol>
         <li>On the Mac mini, open <b>Shortcuts</b> and make one shortcut per light (e.g. “Kitchen Pendants”). Its first action receives <b>Text</b> input.</li>
@@ -894,6 +912,14 @@ document.addEventListener('click', async e => {
       try { await call('/api/admin/cameras', { method: 'POST', body: { add: body } }); flash('Camera added'); } catch (e2) { return flash(e2.message, true); }
       return reload();
     }
+    if (d.prnadd != null) {
+      const body = { name: $('#prn-name').value.trim() || 'P1S', host: $('#prn-host').value.trim(), serial: $('#prn-serial').value.trim(), code: $('#prn-code').value.trim(), notify: $('#prn-notify').value };
+      if (!body.host || !body.serial || !body.code) return flash('Fill in the IP address, serial number and Access Code', true);
+      flash('Connecting to the printer…');
+      try { await call('/api/admin/printers', { method: 'POST', body: { add: body } }); flash('Printer added'); } catch (e2) { return flash(e2.message, true); }
+      return reload();
+    }
+    if (d.prnrm) { if (!confirm('Remove this printer?')) return; await call('/api/admin/printers', { method: 'POST', body: { remove: d.prnrm } }); return reload(); }
     if (d.camrm) { if (!confirm('Remove this camera?')) return; await call('/api/admin/cameras', { method: 'POST', body: { remove: d.camrm } }); return reload(); }
     if (d.elfind != null) { flash('Looking for Key Lights…'); try { const r = await call('/api/admin/elgato', { method: 'POST', body: {} }); flash(r.found ? 'Found ' + r.found + (r.found === 1 ? ' Key Light' : ' Key Lights') : (r.error || 'None found'), !r.found); } catch (e2) { flash(e2.message, true); } return reload(); }
     if (d.eladd != null) { const ip = $('#el-ip').value.trim(); if (!ip) return flash('Type the light’s IP address', true); try { const r = await call('/api/admin/elgato', { method: 'POST', body: { add: ip } }); flash(r.found ? 'Found ' + r.found + ' Key Light' + (r.found === 1 ? '' : 's') : 'Saved, but it didn’t answer', !r.found); } catch (e2) { flash(e2.message, true); } return reload(); }

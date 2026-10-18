@@ -265,6 +265,7 @@
     el.querySelector('.hc-cams').style.display = D.cameras.length ? '' : 'none';
     el.querySelector('.hc-media').innerHTML = media();
     paintTv();
+    paintPrinters();
   }
   function paintTv() {
     if (!V.el) return;
@@ -465,10 +466,63 @@
       return climateChanged();
     }
     if ((t = e.target.closest('[data-tmode]'))) { D.climate.mode = t.dataset.tmode; return climateChanged(); }
+    if ((t = e.target.closest('[data-prn]'))) return App.printerSheet(t.dataset.prn);
     if ((t = e.target.closest('[data-cam]'))) return App.cameraSheet(D.cameras.filter(function (c) { return c.id === t.dataset.cam; })[0]);
     if ((t = e.target.closest('[data-mplay]'))) { e.stopPropagation(); App.musicCmd((D.music || {}).playing ? 'pause' : 'play'); return; }
     if (e.target.closest('[data-go-music]') || e.target.closest('.hc-media')) { App.go('music'); }
   }
+
+  // ------------------------------------------------------------ 3D printers (Bambu)
+  App.printTime = function (m) { m = Math.round(m || 0); return m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + 'm'; };
+  App.printTone = function (p) { return !p.online ? 'off' : p.problem || p.state === 'FAILED' ? 'bad' : p.paused ? 'warn' : p.active ? 'run' : p.state === 'FINISH' ? 'done' : 'idle'; };
+  function prnSnap(p) { return '/api/home/printer/' + encodeURIComponent(p.id) + '/snapshot.jpg?t=' + Date.now(); }
+  function prnTemps(p) {
+    return '<span>Nozzle <b>' + p.nozzle + '°</b>' + (p.nozzleTarget ? ' / ' + p.nozzleTarget + '°' : '') + '</span><span>Bed <b>' + p.bed + '°</b>' + (p.bedTarget ? ' / ' + p.bedTarget + '°' : '') + '</span>' +
+      (p.chamber != null && p.chamber > 0 ? '<span>Chamber <b>' + p.chamber + '°</b></span>' : '');
+  }
+  function prnBody(p) {
+    var tone = App.printTone(p);
+    var head = '<div class="prn-h"><span class="prn-n">' + App.icon('printer3d', 20) + App.esc(p.name) + '</span><span class="prn-st prn-st--' + tone + '">' + App.esc(p.online ? p.stateText : 'Offline') + '</span></div>';
+    if (!p.online) return head + '<p class="prn-sub">' + App.esc(p.error || 'Connecting…') + '</p>';
+    if (!p.active) return head + '<p class="prn-sub">' + (p.state === 'FINISH' && p.file ? 'Last print: ' + App.esc(p.file) : p.state === 'FAILED' && p.file ? App.esc(p.file) + ' didn’t finish' : 'Ready') + '</p><div class="prn-t">' + prnTemps(p) + '</div>';
+    return head +
+      '<div class="prn-main"><img class="prn-cam" data-prnsnap="' + App.esc(p.id) + '" src="' + prnSnap(p) + '" alt="" onerror="this.style.visibility=\'hidden\'">' +
+      '<div class="prn-info"><b class="prn-file">' + App.esc(p.file || 'Print') + '</b>' +
+      '<div class="prn-pct num">' + p.percent + '<small>%</small></div>' +
+      '<div class="prn-bar"><i style="width:' + p.percent + '%"></i></div>' +
+      '<p class="prn-sub">' + (p.stage ? App.esc(p.stage) : p.mins ? App.printTime(p.mins) + ' left · done ' + App.fmt.time(new Date(p.eta)) : 'Almost done') + (p.layers ? ' · layer ' + p.layer + '/' + p.layers : '') + '</p>' +
+      (p.problem ? '<p class="prn-sub prn-bad">' + App.esc(p.problem) + '</p>' : '') + '</div></div>' +
+      '<div class="prn-t">' + prnTemps(p) + '</div>';
+  }
+  function printers() {
+    return (D.printers || []).map(function (p) { return '<button class="prn card" data-prn="' + App.esc(p.id) + '">' + prnBody(p) + '</button>'; }).join('');
+  }
+  function paintPrinters() {
+    if (!V.el) return;
+    var box = V.el.querySelector('.hc-prn');
+    box.style.display = (D.printers || []).length ? '' : 'none';
+    // Status updates every few seconds: keep the camera stills (refreshed on their own timer)
+    var keep = {};
+    App.$$('[data-prnsnap]', box).forEach(function (im) { keep[im.dataset.prnsnap] = im; });
+    box.innerHTML = printers().replace(/(<img class="prn-cam" data-prnsnap="[^"]+") src="[^"]*"/g, '$1');
+    App.$$('[data-prnsnap]', box).forEach(function (im) {
+      var old = keep[im.dataset.prnsnap];
+      if (old) im.parentNode.replaceChild(old, im); else im.src = prnSnap({ id: im.dataset.prnsnap });
+    });
+  }
+  App.printerSheet = function (id) {
+    var p = (D.printers || []).filter(function (x) { return x.id === id; })[0]; if (!p) return;
+    App.sheet('<div class="cam-big"><img class="cam-still" src="' + prnSnap(p) + '" alt=""><img class="cam-live" src="/api/home/printer/' + encodeURIComponent(p.id) + '/live?t=' + Date.now() + '" alt="">' +
+      '<div class="cam-big-bar"><span class="tk-live"><i></i>' + App.esc(p.name) + (p.active ? ' · ' + p.percent + '%' + (p.mins ? ' · ' + App.printTime(p.mins) + ' left' : '') : ' · ' + App.esc(p.stateText)) + '</span><span class="label label--light" data-camstate>Connecting…</span></div></div>', {
+      cls: 'sheet--cam',
+      onMount: function (s) {
+        var v = s.querySelector('.cam-live');
+        v.addEventListener('load', function () { var st = s.querySelector('[data-camstate]'); if (st) st.textContent = 'Live'; });
+        v.addEventListener('error', function () { var st = s.querySelector('[data-camstate]'); if (st) st.textContent = 'Camera unavailable · turn on LAN Only Liveview on the printer'; v.style.display = 'none'; });
+      },
+      onClose: function () { var v = document.querySelector('.cam-live'); if (v) { v.src = ''; v.removeAttribute('src'); } }
+    });
+  };
   function climateChanged() { paintPart('.hc-climate', climate()); paintPart('.hc-sum', summary()); App.emit('data'); }
 
   function camTimer() {
@@ -476,12 +530,14 @@
     V.camTimer = setInterval(function () {
       V.camAge = V.camAge >= 20 ? 1 : V.camAge + 1;
       App.$$('.cam-age', V.el).forEach(function (a) { a.textContent = V.camAge + 's ago'; });
+      if (V.camAge === 1 || V.camAge === 11) App.$$('[data-prnsnap]', V.el).forEach(function (im) { im.src = '/api/home/printer/' + encodeURIComponent(im.dataset.prnsnap) + '/snapshot.jpg?t=' + Date.now(); });
       if (V.camAge === 1) App.$$('[data-camsnap]', V.el).forEach(function (im) { im.src = '/api/home/camera/' + encodeURIComponent(im.dataset.camsnap) + '/snapshot.jpg?t=' + Date.now(); });
     }, 1000);
   }
 
   App.on('live', function (keys) {
     if (V.el && keys.indexOf('tv') > -1) paintTv();
+    if (V.el && keys.indexOf('printers') > -1) paintPrinters();
     if (!V.el || keys.indexOf('music') < 0) return;
     paintPart('.hc-media', media()); paintPart('.hc-sum', summary());
   });
@@ -492,7 +548,7 @@
         V.el = el;
         el.innerHTML = '<div class="hc">' +
           '<div class="hc-left"><div class="hc-sum"></div><div class="hc-scenes"></div><div class="hc-rooms"></div></div>' +
-          '<div class="hc-right"><div class="hc-climate"></div><div class="hc-tv card"></div><div class="hc-cams"></div><div class="hc-media card"></div></div>' +
+          '<div class="hc-right"><div class="hc-climate"></div><div class="hc-tv card"></div><div class="hc-prn"></div><div class="hc-cams"></div><div class="hc-media card"></div></div>' +
           '</div>';
         el.addEventListener('click', onClick);
       }

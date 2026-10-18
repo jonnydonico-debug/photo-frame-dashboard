@@ -77,6 +77,7 @@ export function createHouseTools(ctx) {
     { name: 'light_scene', description: 'Play one of a Govee light’s built-in scenes (e.g. "Sunset"). Leave scene empty to list them.', input_schema: { type: 'object', properties: { light: { type: 'string' }, scene: { type: 'string' } }, required: ['light'] } },
     { name: 'music', description: 'Control music: play, pause, next, previous, volume (0-100), or search and play something on the current speaker.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['play', 'pause', 'next', 'previous', 'volume', 'search_and_play'] }, volume: { type: 'integer' }, query: { type: 'string' } }, required: ['action'] } },
     { name: 'apple_tv', description: 'Control the Apple TV: power on/off, a remote button, or open an app by name.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['power_on', 'power_off', 'button', 'open_app', 'list_apps'] }, button: { type: 'string', enum: ['up', 'down', 'left', 'right', 'select', 'menu', 'home', 'play_pause', 'next', 'previous', 'volume_up', 'volume_down'] }, app: { type: 'string' } }, required: ['action'] } },
+    { name: 'printer_status', description: 'The 3D printer (Bambu P1S): whether it is printing, the file, percent done, minutes left and finish time, layer, temperatures, or the last print’s result.', input_schema: { type: 'object', properties: {} } },
     { name: 'frame_message', description: 'Show a short message full-screen on the wall frame (e.g. "Dinner’s ready!").', input_schema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } }
   ];
 
@@ -84,6 +85,15 @@ export function createHouseTools(ctx) {
     const st = S();
     switch (name) {
       case 'home_summary': return summary();
+      case 'printer_status': {
+        const P = st.printers || [];
+        if (!P.length) return { error: 'No 3D printer is set up (Admin → Lights & Home → 3D printer).' };
+        return P.map(p => ({ name: p.name, online: p.online, state: p.stateText, file: p.file || undefined, step: p.stage || undefined,
+          percent: p.active ? p.percent : undefined, minutes_left: p.active ? p.mins : undefined,
+          finishes_at: p.active && p.eta ? new Date(p.eta).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : undefined,
+          layer: p.layers ? p.layer + ' of ' + p.layers : undefined, nozzle: p.nozzle + '°C', bed: p.bed + '°C', problem: p.problem || undefined,
+          error: p.online ? undefined : p.error }));
+      }
       case 'shopping_list': {
         const want = a.store ? resolveStore(st.stores, a.store).id : null;
         const out = {};

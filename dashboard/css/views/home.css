@@ -134,3 +134,15 @@
 .hm-todo-list button.is-done > i { background: var(--accent); box-shadow: none; }
 .hm-todo-list button > span { overflow: hidden; text-overflow: ellipsis; }
 .hm-todo-none { box-shadow: none; color: var(--mute); padding-left: 0; }
+
+/* 3D printer indicator (corner of the clock photo) */
+.hm-print { position: absolute; right: 18px; bottom: 18px; z-index: 3; display: flex; align-items: center; gap: 7px; max-width: 62%;
+  padding: 8px 13px 8px 11px; border-radius: 999px; font-size: 14px; font-weight: 600; color: #F4F0E7;
+  background: rgba(20, 20, 18, .62); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); overflow: hidden; }
+.hm-print > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hm-print svg { flex: none; color: var(--accent); }
+.hm-print--warn svg { color: var(--amber); }
+.hm-print--bad svg { color: var(--alert); }
+.hm-print--done svg { color: var(--ok); }
+.hm-print-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255, 255, 255, .12); }
+.hm-print-bar i { display: block; height: 100%; background: var(--accent); }

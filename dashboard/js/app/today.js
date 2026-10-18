@@ -124,15 +124,29 @@
     }).join('') + '</div>';
   }
 
+  // 3D printer: a slim bar under the photo while something prints, and for 2 h after it ends
+  function printing() {
+    var P = D.printers || [], now = Date.now();
+    var p = P.filter(function (x) { return x.online && x.active; })[0] ||
+      P.filter(function (x) { return x.online && /^(FINISH|FAILED)$/.test(x.state) && x.endedAt && now - x.endedAt < 2 * 3600e3; })[0];
+    if (!p) return '';
+    var tone = App.printTone ? App.printTone(p) : 'run', t = App.printTime || function (m) { return m + 'm'; };
+    var txt = p.state === 'FINISH' ? 'Print done' + (p.file ? ': ' + p.file : '') : p.state === 'FAILED' ? 'Print failed' + (p.file ? ': ' + p.file : '')
+      : p.paused ? 'Print paused at ' + p.percent + '%' : p.stage && p.state !== 'RUNNING' ? p.stage : 'Printing ' + p.percent + '%' + (p.mins ? ' · ' + t(p.mins) + ' left' : '');
+    return '<button class="tcard prn-chip prn-chip--' + tone + '" data-prnp="' + App.esc(p.id) + '">' + App.icon('printer3d', 18) + '<span>' + App.esc(txt) + '</span>' +
+      (p.active ? '<i class="prn-chip-bar"><i style="width:' + p.percent + '%"></i></i>' : '') + '</button>';
+  }
+
   App.screen('today', {
     render: function (el) {
-      el.innerHTML = '<div class="today">' + hero() + weather() + next() + '<div class="slot-todo">' + todos() + '</div>' +
+      el.innerHTML = '<div class="today">' + hero() + '<div class="slot-prn">' + printing() + '</div>' + weather() + next() + '<div class="slot-todo">' + todos() + '</div>' +
         '<div class="slot-bart">' + bart() + '</div><div class="slot-music">' + music() + '</div>' + notes() + '</div>';
       if (!el.dataset.wired) {
         el.dataset.wired = '1';
         el.addEventListener('click', function (e) {
           var t;
           if ((t = e.target.closest('[data-m]'))) return App.musicCmd(t.dataset.m);
+          if ((t = e.target.closest('[data-prnp]'))) { App.go('home'); if (App.printerSheet) App.printerSheet(t.dataset.prnp); return; }
           if ((t = e.target.closest('[data-todo]'))) return tickTodo(t.dataset.todo);
           if (e.target.closest('[data-chore]')) return App.go('chores');
           if (e.target.closest('[data-adv]')) return App.sheet('<div class="sh-pad"><h2 class="sh-h">BART advisory</h2><p class="sh-p">' + App.esc((D.bart || {}).advisory || '') + '</p><div class="sh-actions"><button class="btn btn--solid" data-close>OK</button></div></div>');
@@ -144,6 +158,7 @@
       var el = App.$('.scr[data-scr="today"]'); if (!el) return;
       if (keys.indexOf('bart') > -1 || keys.indexOf('commute') > -1) { var b = el.querySelector('.slot-bart'); if (b) b.innerHTML = bart(); }
       if (keys.indexOf('music') > -1) { var m = el.querySelector('.slot-music'); if (m) m.innerHTML = music(); }
+      if (keys.indexOf('printers') > -1) { var pr = el.querySelector('.slot-prn'); if (pr) pr.innerHTML = printing(); }
       if (keys.indexOf('weather') > -1) App.rerender();
     }
   });

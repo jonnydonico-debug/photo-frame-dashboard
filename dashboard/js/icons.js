@@ -16,6 +16,7 @@ window.ICONS = {
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   robot: '<rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4M9.5 13v1.5M14.5 13v1.5M2 13v3M22 13v3"/>',
+  printer3d: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 8h18M10 8v3l2 2 2-2V8M7 18h10"/>',
   coin: '<circle cx="12" cy="12" r="9"/><path d="M15 8.5c-.6-.9-1.7-1.5-3-1.5-1.7 0-3 .9-3 2.2 0 3 6 1.6 6 4.6 0 1.3-1.3 2.2-3 2.2-1.3 0-2.5-.6-3-1.5M12 5.5V7M12 17v1.5"/>',
   tasks: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M7.5 12l3 3 6-6"/>',
   cart: '<path d="M3 4h2.2l2.3 11h10.8L21 8H6.5"/><circle cx="10" cy="19.5" r="1.5"/><circle cx="17" cy="19.5" r="1.5"/>',

@@ -75,6 +75,38 @@
       onClose: function () { App.rerender(); }
     });
   }
+  // 3D printers (Bambu): status card, live camera in a sheet
+  App.printTime = function (m) { m = Math.round(m || 0); return m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + 'm'; };
+  App.printTone = function (p) { return !p.online ? 'off' : p.problem || p.state === 'FAILED' ? 'bad' : p.paused ? 'warn' : p.active ? 'run' : p.state === 'FINISH' ? 'done' : 'idle'; };
+  function prnHTML() {
+    var P = D.printers || [];
+    if (!P.length) return '';
+    return '<div class="sec-l">3D printer</div>' + P.map(function (p) {
+      var tone = App.printTone(p);
+      var temps = '<div class="prn-t"><span>Nozzle <b>' + p.nozzle + '°</b>' + (p.nozzleTarget ? '/' + p.nozzleTarget + '°' : '') + '</span><span>Bed <b>' + p.bed + '°</b>' + (p.bedTarget ? '/' + p.bedTarget + '°' : '') + '</span></div>';
+      return '<button class="prn-p" data-prnp="' + App.esc(p.id) + '"><div class="prn-h"><span class="prn-n">' + App.icon('printer3d', 18) + App.esc(p.name) + '</span><span class="prn-st prn-st--' + tone + '">' + App.esc(p.online ? p.stateText : 'Offline') + '</span></div>' +
+        (!p.online ? '<p class="prn-sub">' + App.esc(p.error || 'Connecting…') + '</p>'
+          : p.active ? '<b class="prn-file">' + App.esc(p.file || 'Print') + '</b><div class="prn-row"><span class="prn-pct">' + p.percent + '<small>%</small></span><span class="prn-sub">' +
+            (p.stage ? App.esc(p.stage) : p.mins ? App.printTime(p.mins) + ' left · done ' + App.fmt.time(new Date(p.eta)) : 'Almost done') + (p.layers ? '<br>Layer ' + p.layer + ' of ' + p.layers : '') + '</span></div>' +
+            '<div class="prn-bar"><i style="width:' + p.percent + '%"></i></div>' + (p.problem ? '<p class="prn-sub prn-bad">' + App.esc(p.problem) + '</p>' : '') + temps
+          : '<p class="prn-sub">' + (p.state === 'FINISH' && p.file ? 'Last print: ' + App.esc(p.file) : 'Ready') + '</p>' + temps) + '</button>';
+    }).join('');
+  }
+  App.printerSheet = function (id) {
+    var p = (D.printers || []).filter(function (x) { return x.id === id; })[0]; if (!p) return;
+    var base = '/api/home/printer/' + encodeURIComponent(p.id);
+    App.sheet('<div class="sh-pad"><h2 class="sh-h">' + App.esc(p.name) + '</h2><p class="sh-p"><span data-cs>Connecting to the camera…</span>' + (p.active ? ' · ' + p.percent + '%' + (p.mins ? ' · ' + App.printTime(p.mins) + ' left' : '') : '') + '</p>' +
+      '<div class="cam-live-p"><img class="cam-still-p" src="' + base + '/snapshot.jpg?t=' + Date.now() + '" alt="">' +
+      '<img class="cam-live-img" src="' + base + '/live?t=' + Date.now() + '" alt=""></div></div>', {
+      tall: true,
+      onMount: function (s) {
+        var v = s.querySelector('.cam-live-img');
+        v.addEventListener('load', function () { s.querySelector('[data-cs]').textContent = '● Live'; });
+        v.addEventListener('error', function () { s.querySelector('[data-cs]').textContent = 'Camera unavailable (turn on LAN Only Liveview on the printer)'; v.style.display = 'none'; });
+      },
+      onClose: function () { var v = document.querySelector('.cam-live-img'); if (v) { v.src = ''; v.removeAttribute('src'); } }
+    });
+  };
   // Cameras: a still on each tile (refreshed when the screen opens), live video in a sheet
   function camsHTML() {
     var C = (D.cameras || []).filter(function (c) { return c.live; });
@@ -139,15 +171,20 @@
   }
   App.screen('home', {
     tab: 'more',
+    live: function (keys) {
+      if (keys.indexOf('printers') < 0) return;
+      var b = App.$('.scr[data-scr="home"] .slot-prn');
+      if (b) b.innerHTML = prnHTML(); else if ((D.printers || []).length) App.rerender();
+    },
     render: function (el) {
       var rooms = (D.rooms || []).slice(), list = devs(), sc = D.scenes || [];
       var on = list.filter(function (d) { return d.type === 'light' && d.on; }).length;
       var body = '';
-      if (!list.length && !sc.length && !(D.climate && D.climate.enabled) && !(D.tv && D.tv.paired)) {
+      if (!list.length && !sc.length && !(D.climate && D.climate.enabled) && !(D.tv && D.tv.paired) && !(D.printers || []).length) {
         body = '<div class="empty">' + App.icon('bulb', 30) + '<b>Nothing set up yet</b><span>Add your Govee key, pair the Apple TV, or link Apple Home lights in Admin → Lights &amp; Home. They show up here and on the frame.</span></div>';
       } else {
         body = tvEntry() + (sc.length ? '<div class="sec-l">Scenes</div><div class="scenes">' + sc.map(function (s) { return '<button data-scene="' + App.esc(s.id) + '">' + App.icon(s.icon || 'bolt', 20) + '<span>' + App.esc(s.name) + '</span></button>'; }).join('') + '</div>' : '') +
-          climate() + camsHTML() +
+          climate() + '<div class="slot-prn">' + prnHTML() + '</div>' + camsHTML() +
           rooms.concat(list.some(function (d) { return !rooms.some(function (r) { return r.id === d.room; }); }) ? [{ id: '__other', name: 'Other' }] : []).map(function (r) {
             var ds = list.filter(function (d) { return r.id === '__other' ? !rooms.some(function (x) { return x.id === d.room; }) : d.room === r.id; });
             return '<div class="sec-l">' + App.esc(r.name) + '</div>' + (ds.length ? '<div class="dvs">' + ds.map(tile).join('') + '</div>' : '<p class="dvs-empty">No devices yet</p>');
@@ -162,6 +199,7 @@
           var t;
           if ((t = e.target.closest('[data-go]'))) return App.go(t.dataset.go);
           if ((t = e.target.closest('[data-camp]'))) return camSheet(t.dataset.camp);
+          if ((t = e.target.closest('[data-prnp]'))) return App.printerSheet(t.dataset.prnp);
           if ((t = e.target.closest('[data-scene]'))) return scene(t.dataset.scene);
           if ((t = e.target.closest('[data-dev]'))) { var d = dev(t.dataset.dev); if (d) open(d); return; }
           if (e.target.closest('[data-alloff]')) { devs().forEach(function (d) { if (d.type === 'light') d.on = false; }); App.save(); App.rerender(); return App.toast('All lights off', { icon: 'bulb' }); }

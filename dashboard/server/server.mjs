@@ -14,6 +14,7 @@ import { createIntegrations } from './integrations.mjs';
 import { createGovee } from './govee.mjs';
 import { createElgato } from './elgato.mjs';
 import { createCameras } from './cameras.mjs';
+import { createBambu } from './bambu.mjs';
 import { createAppleTV } from './appletv.mjs';
 import { MODELS, testKey, claudeUsage, setUsageSink, createHouseTools } from './assistant.mjs';
 import { createRecipes } from './recipes.mjs';
@@ -49,7 +50,7 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 // Keys the wall display / any screen on the home network may change (day-to-day use).
 const OPEN_KEYS = ['display', 'notes', 'games', 'chores', 'stars', 'week', 'groceries', 'events', 'devices', 'climate', 'todos', 'recipes'];
 // Keys only an admin (or the agent token) may change.
-const LIVE_KEYS = ['bart', 'music', 'tv', 'costs', 'reminders'];   // refreshed constantly by the server, not saved
+const LIVE_KEYS = ['bart', 'music', 'tv', 'costs', 'reminders', 'printers'];   // refreshed constantly by the server, not saved
 const ADMIN_KEYS = ['commute', 'bart', 'music', 'people', 'family', 'routines', 'stores', 'catOrder', 'catalog', 'usuals', 'rooms',
   'scenes', 'cameras', 'photos', 'agents', 'media', 'weather', 'settings'];
 const ALL_KEYS = OPEN_KEYS.concat(ADMIN_KEYS);
@@ -314,6 +315,8 @@ const AG = createAgents({
 PLX = createPlexTools({ plex: (p, o) => plex(p, o), plexOk: () => !!(secrets.plex.url && secrets.plex.token), settings: () => AG.settings(), log });
 const IM = createIMessage({ secrets, saveSecrets: () => saveSecrets(), log, agents: AG });
 // Claude API costs (Admin → Costs and the frame's Costs tab)
+// 3D printers (Bambu Lab, local network): status on the screens, a text when a print ends
+const PRN = createBambu({ secrets, saveSecrets: () => saveSecrets(), commit: (p, c) => commit(p, c), log, notify: (p, t) => IM.notify(p, t), announce: text => broadcast({ type: 'announce', text, icon: 'bell' }) });
 const COSTS = createCosts({ dataDir: DATA, log, commit: (p, c) => commit(p, c), notify: (p, t) => IM.notify(p, t), agentName: id => { const a = AG.get(id); return a ? a.name : id; } });
 setUsageSink((m, u, t) => COSTS.record(m, u, t));
 // Connected calendars (iCloud / Google iCal links), merged into state.events
@@ -576,6 +579,14 @@ async function api(req, res, url) {
         res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Content-Length': buf.length, 'Cache-Control': 'no-store' });
         return res.end(buf);
       }
+      // 3D printer camera (home network or signed in only)
+      const pm = p.match(/^\/api\/home\/printer\/([\w-]+)\/(live|snapshot\.jpg)$/);
+      if (pm) {
+        if (pm[2] === 'live') return PRN.live(req, res, pm[1]);
+        const buf = await PRN.snapshot(pm[1]);
+        res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Content-Length': buf.length, 'Cache-Control': 'no-store' });
+        return res.end(buf);
+      }
       if (p === '/api/home/lockdiag' && m === 'POST') {
         // The frame reports lock-screen video trouble here so it shows up in logs/server.log
         const b = await readBody(req), k = String(b.event || '').slice(0, 30);
@@ -741,7 +752,7 @@ async function api(req, res, url) {
         calendars: CAL.list(),
         govee: GV.status(),
         elgato: EL.status(),
-        cameraSetup: CAM.status(), cameraList: CAM.list(),
+        cameraSetup: CAM.status(), cameraList: CAM.list(), printerList: PRN.list(),
         assistant: (() => { const a = secrets.assistant || {}; return { enabled: !!a.enabled, hasKey: !!a.apiKey, models: MODELS, allow: a.allow || [], status: IM.status(), usage: claudeUsage(), frontDesk: AG.frontDesk() && AG.frontDesk().name }; })(),
         tv: TV.status(),
         spotify: { clientId: (secrets.spotify || {}).clientId || '', hasSecret: !!(secrets.spotify || {}).clientSecret, connected: !!(secrets.spotify || {}).refreshToken, status: X.spotifyStatus(), redirect: spotifyRedirect(req) },
@@ -830,6 +841,15 @@ async function api(req, res, url) {
         if (b.remove) { CAM.remove(String(b.remove)); return send(res, 200, { cameras: CAM.list() }); }
         if (b.rename) { CAM.rename(String(b.rename.id), b.rename.name); return send(res, 200, { cameras: CAM.list() }); }
         return send(res, 200, { setup: CAM.status(), cameras: CAM.list() });
+      } catch (e) { return send(res, e.status && e.status < 500 ? e.status : 409, { error: e.message }); }
+    }
+    if (sub === 'printers' && m === 'POST') {
+      const b = await readBody(req);
+      try {
+        if (b.add) return send(res, 200, Object.assign(await PRN.add(b.add), { printers: PRN.list() }));
+        if (b.remove) { PRN.remove(String(b.remove)); return send(res, 200, { printers: PRN.list() }); }
+        if (b.update) { PRN.update(String(b.update.id), b.update); return send(res, 200, { printers: PRN.list() }); }
+        return send(res, 200, { printers: PRN.list() });
       } catch (e) { return send(res, e.status && e.status < 500 ? e.status : 409, { error: e.message }); }
     }
     if (sub === 'elgato' && m === 'POST') {
@@ -1085,5 +1105,5 @@ server.listen(PORT, HOST, () => {
   log('  Dashboard:  http://' + os.hostname().replace(/\.local$/, '') + '.local:' + PORT + '/');
   addrs.forEach(a => log('              http://' + a + ':' + PORT + '/'));
   log('  Admin:      /admin');
-  refreshWeather(); refreshPlex(); X.start(); GV.start(); EL.start(); CAM.start(); TV.start(); IM.start(); AG.startSchedules(); CAL.start(); COSTS.publish(); setInterval(() => COSTS.publish(), 30 * 60000);
+  refreshWeather(); refreshPlex(); X.start(); GV.start(); EL.start(); CAM.start(); PRN.start(); TV.start(); IM.start(); AG.startSchedules(); CAL.start(); COSTS.publish(); setInterval(() => COSTS.publish(), 30 * 60000);
 });
