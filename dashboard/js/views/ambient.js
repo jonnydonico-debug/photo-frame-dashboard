@@ -8,7 +8,7 @@
   var D = window.DATA, $ = App.$;
   var amb = { show: null, scene: null }, shiftTimer = null, primed = false;
   var SCENES = { day: '/lock/henley-day', night: '/lock/henley-night' };
-  var VER = '?v=2'; // bump when the scene files change, so tablets and Cloudflare don't keep old copies
+  var VER = '?v=3'; // bump when the scene files change, so tablets and Cloudflare don't keep old copies
   // MP4 (H.264) where the browser can play it (lighter on tablets), WebM (VP9) otherwise or if it fails
   var fmt = null;
   function pickFmt(v) {
@@ -108,7 +108,7 @@
     setTimeout(function () { if (App.mode === 'ambient' && !dec.gaveUp) { load(v, which); start(v); } }, 3000);
   }
   // Unlocked: free the decoder (and start fresh next time)
-  function stopScene() { if (amb.scene) release(amb.scene); dec.gaveUp = false; }
+  function stopScene() { if (amb.scene) release(amb.scene); dec.gaveUp = false; hdFailed = false; dec.errors = []; }
   // Some tablets only allow video after a tap: play/stop once on the first tap so later lock
   // screens can start on their own.
   function prime() {
