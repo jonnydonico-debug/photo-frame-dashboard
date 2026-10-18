@@ -16,7 +16,12 @@
     var mp4 = v.canPlayType('video/mp4; codecs="avc1.4D401F"'), webm = v.canPlayType('video/webm; codecs="vp9"');
     return (fmt = mp4 ? 'mp4' : webm ? 'webm' : 'mp4');
   }
-  function srcFor(v, which) { return SCENES[which] + '.' + pickFmt(v) + VER; }
+  // Full resolution (1280×800 H.264) on screens that can take it, like an iPad; the light 576×360
+  // version on the old wall tablet, whose decoder freezes on the big one. Settings → Lock screen.
+  var hdFailed = false;
+  App.sceneQuality = function () { var q = App.displayCfg().lock.quality; return q || (/Android/i.test(navigator.userAgent) ? 'light' : 'hd'); };
+  function hd() { return App.sceneQuality() === 'hd' && !hdFailed; }
+  function srcFor(v, which) { return hd() && v.canPlayType('video/mp4; codecs="avc1.4D401F"') ? SCENES[which] + '-hd.mp4' + VER : SCENES[which] + '.' + pickFmt(v) + VER; }
 
   function lockCfg() { return App.displayCfg().lock; }
   function sceneOn() { return lockCfg().wallpaper === 'scene'; }
@@ -79,7 +84,8 @@
     $('#ambient').style.setProperty('--scene-dim', which === 'night' && App.isNight() ? (0.35 + k * 0.65).toFixed(2) : '1');
     $('#ambient').classList.toggle('is-night-scene', which === 'night');
     if (dec.gaveUp) return; // still picture until the next lock
-    if (v.dataset.which !== which || !v.getAttribute('src') || Date.now() - dec.started > FRESH_MS) load(v, which);
+    var wantSrc = srcFor(v, which);
+    if (v.dataset.which !== which || !v.getAttribute('src') || v.getAttribute('src') !== wantSrc || (!hd() && Date.now() - dec.started > FRESH_MS)) load(v, which);
     if (v.paused) start(v);
   }
   function onError() {
@@ -88,6 +94,7 @@
     report('video-error', fmt + ' code ' + (e && e.code) + ' ' + ((e && e.message) || '') + ' · #' + dec.errors.length);
     if (App.mode !== 'ambient') return release(v);
     var which = v.dataset.which || sceneWanted();
+    if (hd()) { hdFailed = true; report('hd-failed', 'falling back to the light video'); release(v); setTimeout(function () { if (App.mode === 'ambient') { load(v, which); start(v); } }, 1000); return; }
     if (dec.errors.length >= 3) { dec.gaveUp = true; release(v); poster(v, which); report('gave-up', 'showing the still picture'); return; }
     if (dec.errors.length === 2) fmt = fmt === 'mp4' ? 'webm' : 'mp4';
     release(v); poster(v, which);
