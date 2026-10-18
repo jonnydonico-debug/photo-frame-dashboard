@@ -3,6 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=1280, initial-scale=1, user-scalable=no">
+  <script>
+    // The wall tablet is exactly 1280 wide. Other screens (iPad, laptop) lay out at their own width
+    // and the dashboard scales itself to fill them (js/app.js fit), instead of the browser zooming in.
+    if (!/Android/i.test(navigator.userAgent)) document.querySelector('meta[name=viewport]').setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
+  </script>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="theme-color" content="#0B0B0A">
   <title>Home HQ</title>
   <link rel="manifest" href="/manifest.webmanifest">
