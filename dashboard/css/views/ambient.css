@@ -51,3 +51,7 @@
 .stage.is-red .ambient img, .stage.is-red .ambient video { filter: none; }
 /* The scenes are stored at the art's own pixel size; scale them up with crisp square pixels */
 .amb-scene { image-rendering: pixelated; }
+/* Whole picture: the full 16:10 scene, with a blurred copy behind it filling the rest of a 4:3 screen */
+.amb-scene-bg { display: none; position: absolute; top: -40px; left: -40px; right: -40px; bottom: -40px; background: #000 center / cover no-repeat; -webkit-filter: blur(28px) brightness(.55); filter: blur(28px) brightness(.55); opacity: var(--scene-dim, 1); }
+.ambient.is-scene.is-whole .amb-scene-bg { display: block; }
+.ambient.is-whole .amb-scene { object-fit: contain; background-image: none !important; background-color: transparent; }

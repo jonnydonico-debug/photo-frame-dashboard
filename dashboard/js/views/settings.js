@@ -51,6 +51,7 @@
           '<div class="st-row"><div class="label">At night</div>' + seg('locknight', [['scene', L.wallpaper === 'scene' ? 'Night scene' : 'Photos'], ['red', 'Red clock (no blue light)']], L.night) + '</div>' +
           '<div class="st-row"><div class="label">Show</div>' + seg('lockdetails', [['full', 'Clock, weather & next event'], ['clock', 'Just the clock']], L.details) + '</div>' +
           (L.wallpaper === 'scene' ? '<div class="st-row"><div class="label">Clock style</div>' + seg('lockfont', [['pixel', 'Pixel'], ['classic', 'Classic']], L.font) + '</div>' +
+            '<div class="st-row"><div class="label">Picture</div>' + seg('lockfit', [['whole', 'Whole scene'], ['fill', 'Fill the screen (crops)']], App.sceneFit ? App.sceneFit() : 'whole') + '</div>' +
             '<div class="st-row"><div class="label">Video</div>' + seg('lockquality', [['hd', 'Full resolution'], ['light', 'Light (older tablets)']], App.sceneQuality ? App.sceneQuality() : 'hd') + '</div>' : '') +
         '</div>' +
       '</div></section>';
@@ -115,6 +116,7 @@
     if (b.dataset.wallpaper) { c.lock.wallpaper = b.dataset.wallpaper; return save(c); }
     if (b.dataset.locknight) { c.lock.night = b.dataset.locknight; return save(c); }
     if (b.dataset.lockdetails) { c.lock.details = b.dataset.lockdetails; return save(c); }
+    if (b.dataset.lockfit) { c.lock.fit = b.dataset.lockfit; save(c); App.emit('lockstyle'); return; }
     if (b.dataset.lockquality) { c.lock.quality = b.dataset.lockquality; save(c); App.emit('lockstyle'); return; }
     if (b.dataset.lockfont) { c.lock.font = b.dataset.lockfont; return save(c); }
     if (b.hasAttribute('data-lock')) return App.lock();

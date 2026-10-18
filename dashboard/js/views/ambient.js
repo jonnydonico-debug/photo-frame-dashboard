@@ -63,7 +63,11 @@
   function poster(v, which) {
     v.poster = SCENES[which] + '.jpg' + VER;
     v.style.backgroundImage = 'url(' + v.poster + ')'; // shows until (or if) the video can play
+    var bg = $('#ambient .amb-scene-bg'); if (bg) bg.style.backgroundImage = 'url(' + v.poster + ')';
   }
+  // 'whole' shows the entire scene (blurred copy fills the leftover space, e.g. on a 4:3 iPad);
+  // 'fill' crops it to fill the screen. Default: whole picture unless the screen is 16:10 anyway.
+  App.sceneFit = function () { return App.displayCfg().lock.fit || (/Android/i.test(navigator.userAgent) ? 'fill' : 'whole'); };
   function release(v) {
     v.pause();
     if (v.getAttribute('src')) { v.removeAttribute('src'); try { v.load(); } catch (e) {} }
@@ -127,6 +131,7 @@
       var scene = sceneOn();
       $('#ambient').classList.toggle('is-scene', scene);
       $('#ambient').classList.toggle('is-classic', lockCfg().font === 'classic');
+      $('#ambient').classList.toggle('is-whole', App.sceneFit() === 'whole');
       if (scene) $('#ambient .px-info').innerHTML = sceneInfo();
       else $('#ambient .amb-info').innerHTML = ambientInfo();
     }
@@ -147,7 +152,7 @@
 
   App.on('ready', function () {
     $('#ambient').innerHTML = '<div class="amb-stage"></div><div class="amb-scrim"></div><div class="amb-info"></div>' +
-      '<video class="amb-scene" muted loop playsinline preload="auto" disableremoteplayback></video><div class="px-scrim"></div><div class="px-info"></div>';
+      '<div class="amb-scene-bg"></div><video class="amb-scene" muted loop playsinline preload="auto" disableremoteplayback></video><div class="px-scrim"></div><div class="px-info"></div>';
     $('#night').innerHTML = '<div class="nt-inner"></div>';
     amb.show = new App.Slideshow($('#ambient .amb-stage'), { layout: 'cover', captions: false, interval: 14000 });
     amb.scene = $('#ambient .amb-scene');
